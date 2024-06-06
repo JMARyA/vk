@@ -16,6 +16,14 @@ fn main() {
             let task_id: &String = task_info_arg.get_one("task_id").unwrap();
             ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
+        Some(("login", login_arg)) => {
+            let username: &String = login_arg.get_one("username").unwrap();
+            let password: &String = login_arg.get_one("password").unwrap();
+            let totp: Option<&String> = login_arg.get_one("totp");
+
+            let token = api.login(username, password, totp.map(|x| x.as_str()));
+            println!("\"token\" = \"{token}\"");
+        }
         Some(("prj", prj_arg)) => match prj_arg.subcommand() {
             Some(("ls", _)) => {
                 ui::project::list_projects(&api);
@@ -25,6 +33,17 @@ fn main() {
                 ui::project::list_projects(&api);
             }
         },
+        Some(("assign", assign_arg)) => {
+            let user: &String = assign_arg.get_one("user").unwrap();
+            let task_id: &String = assign_arg.get_one("task_id").unwrap();
+            let undo = assign_arg.get_flag("undo");
+
+            if undo {
+                api.remove_assign_to_task(user, task_id.parse().unwrap());
+            } else {
+                api.assign_to_task(user, task_id.parse().unwrap());
+            }
+        }
         Some(("labels", label_args)) => match label_args.subcommand() {
             Some(("ls", _)) => {
                 ui::print_all_labels(&api);

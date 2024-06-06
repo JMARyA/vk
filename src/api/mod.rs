@@ -259,4 +259,46 @@ impl VikunjaAPI {
         );
         serde_json::from_str(&resp).unwrap()
     }
+
+    pub fn login(&self, username: &str, password: &str, totp: Option<&str>) -> String {
+        let resp = self.post_request(
+            "/login",
+            &serde_json::json!({
+                "username": username,
+                "password": password,
+                "totp_passcode": totp
+            }),
+        );
+
+        let val: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        val.as_object()
+            .unwrap()
+            .get("token")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    pub fn search_user(&self, search: &str) -> Option<Vec<User>> {
+        let resp = self.get_request(&format!("/users?s={search}"));
+        serde_json::from_str(&resp).ok()
+    }
+
+    pub fn assign_to_task(&self, user: &str, task_id: isize) {
+        let user = self.search_user(user).unwrap();
+
+        self.put_request(
+            &format!("/tasks/{task_id}/assignees"),
+            &serde_json::json!({
+                "user_id": user.first().unwrap().id
+            }),
+        );
+    }
+
+    pub fn remove_assign_to_task(&self, user: &str, task_id: isize) {
+        let user = self.search_user(user).unwrap();
+        let user_id = user.first().unwrap().id;
+        self.delete_request(&format!("/tasks/{task_id}/assignees/{user_id}"));
+    }
 }

@@ -34,6 +34,22 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .subcommand(
             command!()
+                .name("login")
+                .about("Get a JWT Token for authentication")
+                .arg(arg!(-u --username <username> "Username").required(true))
+                .arg(arg!(-p --password <password> "Password").required(true))
+                .arg(arg!(--totp <totp> "TOTP Code").required(false)),
+        )
+        .subcommand(
+            command!()
+                .name("assign")
+                .about("Assign a user to a task")
+                .arg(arg!(-u --undo "Remove label from task").required(false))
+                .arg(arg!([user] "User").required(true))
+                .arg(arg!([task_id] "Task ID").required(true)),
+        )
+        .subcommand(
+            command!()
                 .name("label")
                 .about("Add a label to a task")
                 .arg(arg!(-u --undo "Remove label from task").required(false))

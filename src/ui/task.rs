@@ -135,7 +135,13 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
         println!("---\n{}", task.description);
     }
 
-    //pub assignees: Option<Vec<String>>,
-    //pub labels: Option<Vec<Label>>,
+    if let Some(assigned) = task.assignees {
+        print!("Assigned to: ");
+        for assignee in assigned {
+            print!("{} ", assignee.username);
+        }
+        println!();
+    }
+
     // pub percent_done: f64,
 }
