@@ -270,6 +270,7 @@ impl VikunjaAPI {
             "title": title
         });
 
+        // todo :
         // description
         // due_date
         // end_date

@@ -6,23 +6,46 @@ mod ui;
 use api::{ProjectID, VikunjaAPI};
 
 fn main() {
-    let config: config::Config =
-        toml::from_str(&std::fs::read_to_string("config.toml").unwrap()).unwrap();
-    let api = VikunjaAPI::new(&config.host, &config.token);
     let arg = args::get_args();
+    let config_path = dirs::home_dir().unwrap().join(".config").join("vk.toml");
+
+    if let Some(("login", login_arg)) = arg.subcommand() {
+        let username: &String = login_arg.get_one("username").unwrap();
+        let password: &String = login_arg.get_one("password").unwrap();
+        let totp: Option<&String> = login_arg.get_one("totp");
+        let host: &String = login_arg.get_one("host").unwrap();
+
+        let host = if host.starts_with("http") {
+            host.to_string()
+        } else {
+            format!("https://{host}")
+        };
+
+        let api = VikunjaAPI::new(&host, "");
+
+        let token = api.login(username, password, totp.map(|x| x.as_str()));
+        let config = format!("host = \"{host}\"\ntoken = \"{token}\"");
+
+        std::fs::write(config_path, config).unwrap();
+        std::process::exit(0);
+    }
+
+    let content = &std::fs::read_to_string(config_path).unwrap_or_else(|e| {
+        ui::print_color(
+            crossterm::style::Color::Red,
+            &format!("Could not read config file: {e}"),
+        );
+        println!("\nTo setup vk run `vk login --help`");
+        std::process::exit(1);
+    });
+
+    let config: config::Config = toml::from_str(content).unwrap();
+    let api = VikunjaAPI::new(&config.host, &config.token);
 
     match arg.subcommand() {
         Some(("info", task_info_arg)) => {
             let task_id: &String = task_info_arg.get_one("task_id").unwrap();
             ui::task::print_task_info(task_id.parse().unwrap(), &api);
-        }
-        Some(("login", login_arg)) => {
-            let username: &String = login_arg.get_one("username").unwrap();
-            let password: &String = login_arg.get_one("password").unwrap();
-            let totp: Option<&String> = login_arg.get_one("totp");
-
-            let token = api.login(username, password, totp.map(|x| x.as_str()));
-            println!("\"token\" = \"{token}\"");
         }
         Some(("prj", prj_arg)) => match prj_arg.subcommand() {
             Some(("ls", _)) => {
