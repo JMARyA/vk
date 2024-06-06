@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 mod project;
@@ -43,6 +45,19 @@ where
         page += 1;
     }
     ret
+}
+
+fn unique_tasks(tasks: Vec<Task>) -> Vec<Task> {
+    let mut seen_ids = HashSet::new();
+    let mut unique_tasks = Vec::with_capacity(tasks.len());
+
+    for task in tasks {
+        if seen_ids.insert(task.id) {
+            unique_tasks.push(task);
+        }
+    }
+
+    unique_tasks
 }
 
 pub struct ProjectID(pub isize);
@@ -146,7 +161,7 @@ impl VikunjaAPI {
 
     // tasks
     pub fn get_all_tasks(&self) -> Vec<Task> {
-        get_all_items(|x| self.get_task_page(x))
+        unique_tasks(get_all_items(|x| self.get_task_page(x)))
     }
 
     pub fn get_task(&self, id: isize) -> Task {
