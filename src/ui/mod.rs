@@ -11,6 +11,12 @@ use crate::api::{Label, VikunjaAPI};
 pub mod project;
 pub mod task;
 
+fn format_html_to_terminal(html: &str) -> String {
+    let width = crossterm::terminal::size().unwrap().0 as usize;
+    let cursor = std::io::Cursor::new(html);
+    html2text::from_read(cursor, width)
+}
+
 /// Print `txt` with a custom `color`
 pub fn print_color(color: Color, txt: &str) {
     stdout().execute(SetForegroundColor(color)).unwrap();

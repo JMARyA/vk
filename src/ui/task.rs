@@ -1,6 +1,9 @@
 use crate::{
     api::{Project, ProjectID, Task, VikunjaAPI},
-    ui::{hex_to_color, is_in_past, parse_datetime, print_color, print_label, time_relative},
+    ui::{
+        format_html_to_terminal, hex_to_color, is_in_past, parse_datetime, print_color,
+        print_label, time_relative,
+    },
 };
 
 // todo : move to grid view
@@ -147,7 +150,7 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     }
 
     if task.description != "<p></p>" && !task.description.is_empty() {
-        println!("---\n{}", task.description);
+        println!("---\n{}", format_html_to_terminal(&task.description));
     }
 
     if let Some(assigned) = task.assignees {
