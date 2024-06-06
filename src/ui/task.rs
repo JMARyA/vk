@@ -1,9 +1,10 @@
 use crate::{
-    api::{ProjectID, Task, VikunjaAPI},
-    ui::{parse_datetime, print_color, print_label, time_since},
+    api::{Project, ProjectID, Task, VikunjaAPI},
+    ui::{hex_to_color, is_in_past, parse_datetime, print_color, print_label, time_relative},
 };
 
-fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
+// todo : move to grid view
+fn print_task_oneline(task: &Task, projects: &[Project]) {
     print_color(crossterm::style::Color::Yellow, &format!("({}) ", task.id));
 
     if task.is_favorite {
@@ -12,10 +13,13 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
 
     print_color(crossterm::style::Color::Blue, &task.title);
 
-    // todo : colors based on project colors
+    let project = projects
+        .into_iter()
+        .find(|x| x.id == task.project_id)
+        .unwrap();
     print_color(
-        crossterm::style::Color::DarkRed,
-        &format!(" [{}]", api.get_project_name_from_id(task.project_id)),
+        hex_to_color(&project.hex_color).unwrap_or(crossterm::style::Color::Reset),
+        &format!(" [{}]", project.title),
     );
 
     if task.done {
@@ -40,8 +44,7 @@ pub fn print_current_tasks(
     project: Option<&String>,
     label: Option<&String>,
 ) {
-    // todo : improve performance by using filters -> https://vikunja.io/docs/filters/
-    let current_tasks = api.get_all_tasks();
+    let current_tasks = api.get_latest_tasks();
 
     let mut selection: Vec<_> = if done {
         current_tasks
@@ -73,8 +76,10 @@ pub fn print_current_tasks(
         });
     }
 
+    let projects = api.get_all_projects();
+
     for task in selection {
-        print_task_oneline(&task, api);
+        print_task_oneline(&task, &projects);
     }
 }
 
@@ -84,7 +89,10 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     if task.done {
         print_color(
             crossterm::style::Color::Green,
-            &format!("{} ✓ ", time_since(parse_datetime(&task.done_at).unwrap())),
+            &format!(
+                "{} ✓ ",
+                time_relative(parse_datetime(&task.done_at).unwrap())
+            ),
         );
     }
 
@@ -102,13 +110,20 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     println!("Created by {}", task.created_by.username);
     println!(
         "Created: {} | Updated: {}",
-        time_since(parse_datetime(&task.created).unwrap()),
-        time_since(parse_datetime(&task.updated).unwrap())
+        time_relative(parse_datetime(&task.created).unwrap()),
+        time_relative(parse_datetime(&task.updated).unwrap())
     );
 
     if let Some(due_date) = parse_datetime(&task.due_date) {
-        // todo : color if overdue
-        println!("Due at {due_date}");
+        print_color(
+            if is_in_past(due_date) {
+                crossterm::style::Color::Red
+            } else {
+                crossterm::style::Color::Reset
+            },
+            &format!("Due {}", time_relative(due_date)),
+        );
+        println!();
     }
 
     if task.priority != 0 {

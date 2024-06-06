@@ -50,19 +50,37 @@ fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
 }
 
 /// Return a formatted time duration
-pub fn time_since(event: DateTime<Utc>) -> String {
+pub fn time_relative(event: DateTime<Utc>) -> String {
     let now = Utc::now();
     let duration = now.signed_duration_since(event);
 
-    if duration.num_days() > 0 {
-        format!("{}d ago", duration.num_days())
-    } else if duration.num_hours() > 0 {
-        format!("{}h ago", duration.num_hours())
-    } else if duration.num_minutes() > 0 {
-        format!("{}m ago", duration.num_minutes())
-    } else {
-        "Just now".to_string()
+    if duration.num_seconds() == 0 {
+        return "Just now".to_string();
     }
+
+    let is_past = duration.num_seconds() > 0;
+    let abs_duration = if is_past { duration } else { -duration };
+
+    let time_string = if abs_duration.num_days() > 0 {
+        format!("{}d", abs_duration.num_days())
+    } else if abs_duration.num_hours() > 0 {
+        format!("{}h", abs_duration.num_hours())
+    } else if abs_duration.num_minutes() > 0 {
+        format!("{}m", abs_duration.num_minutes())
+    } else {
+        format!("{}s", abs_duration.num_seconds())
+    };
+
+    if is_past {
+        format!("{} ago", time_string)
+    } else {
+        format!("in {}", time_string)
+    }
+}
+
+fn is_in_past(dt: DateTime<Utc>) -> bool {
+    let now = Utc::now();
+    dt < now
 }
 
 fn print_label(label: &Label) {

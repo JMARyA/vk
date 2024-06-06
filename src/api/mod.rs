@@ -249,6 +249,11 @@ impl VikunjaAPI {
         get_all_items(|x| self.get_task_page(x))
     }
 
+    pub fn get_latest_tasks(&self) -> Vec<Task> {
+        let resp = self.get_request("/tasks/all?per_page=60&sort_by=created&order_by=desc");
+        serde_json::from_str(&resp).unwrap()
+    }
+
     pub fn get_task(&self, id: isize) -> Task {
         let resp = self.get_request(&format!("/tasks/{id}"));
         serde_json::from_str(&resp).unwrap()
