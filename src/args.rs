@@ -36,10 +36,21 @@ pub fn get_args() -> clap::ArgMatches {
             command!()
                 .name("label")
                 .about("Manage labels")
-                .subcommand(command!().name("ls").about("List all labels")),
-            // todo : label new
-            // todo : label rm
-            // todo : label <label> <task>
+                .subcommand(command!().name("ls").about("List all labels"))
+                .subcommand(
+                    command!()
+                        .name("new")
+                        .about("Create a new label")
+                        .arg(
+                            arg!(-c --color <color> "HEX Color Code for the label").required(false),
+                        )
+                        .arg(
+                            arg!(-d --description <description> "Description for the label")
+                                .required(false),
+                        )
+                        .arg(arg!(<title> "Label title").required(true)),
+                ), // todo : label rm
+                   // todo : label <label> <task>
         )
         .subcommand(
             command!()

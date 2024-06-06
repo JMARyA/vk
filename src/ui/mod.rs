@@ -66,7 +66,7 @@ pub fn time_since(event: DateTime<Utc>) -> String {
 }
 
 fn print_label(label: &Label) {
-    let color = hex_to_color(&label.hex_color).unwrap();
+    let color = hex_to_color(&label.hex_color).unwrap_or(Color::Reset);
     print_color_bg(color, label.title.trim());
 }
 

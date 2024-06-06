@@ -29,7 +29,17 @@ fn main() {
             Some(("ls", _)) => {
                 ui::print_all_labels(&api);
             }
-            Some(("new", new_label_arg)) => {}
+            Some(("new", new_label_arg)) => {
+                let description: Option<&String> = new_label_arg.get_one("description");
+                let color: Option<&String> = new_label_arg.get_one("color");
+                let title: &String = new_label_arg.get_one("title").unwrap();
+
+                api.new_label(
+                    title.as_str(),
+                    description.map(|x| x.as_str()),
+                    color.map(|x| x.as_str()),
+                );
+            }
             _ => {
                 // todo : label tasks
             }

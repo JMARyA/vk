@@ -151,6 +151,19 @@ impl VikunjaAPI {
         })
     }
 
+    pub fn new_label(&self, title: &str, description: Option<&str>, color: Option<&str>) -> Label {
+        let resp = self.put_request(
+            "/labels",
+            &serde_json::json!({
+                "title": title,
+                "description": description,
+                "hex_color": color
+            }),
+        );
+
+        serde_json::from_str(&resp).unwrap()
+    }
+
     // tasks
     pub fn get_task_page(&self, page: usize) -> Vec<Task> {
         let resp = self.get_request(&format!("/tasks/all?page={page}"));
