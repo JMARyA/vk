@@ -9,12 +9,14 @@ use crossterm::{
 pub mod project;
 pub mod task;
 
+/// Print `txt` with a custom `color`
 pub fn print_color(color: Color, txt: &str) {
     stdout().execute(SetForegroundColor(color)).unwrap();
     print!("{txt}");
     stdout().execute(SetForegroundColor(Color::Reset)).unwrap();
 }
 
+/// Convert a HEX Color String into a `Color` struct
 fn hex_to_color(hex: &str) -> Result<Color, String> {
     let hex = hex.trim_start_matches('#');
 
@@ -29,6 +31,7 @@ fn hex_to_color(hex: &str) -> Result<Color, String> {
     Ok(Color::Rgb { r, g, b })
 }
 
+/// Parse datetime string
 fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
     if datetime_str == "0001-01-01T00:00:00Z" {
         return None;
@@ -40,6 +43,7 @@ fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
     }
 }
 
+/// Return a formatted time duration
 pub fn time_since(event: DateTime<Utc>) -> String {
     let now = Utc::now();
     let duration = now.signed_duration_since(event);

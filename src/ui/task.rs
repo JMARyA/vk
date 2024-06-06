@@ -1,5 +1,5 @@
 use crate::{
-    api::{Task, VikunjaAPI},
+    api::{ProjectID, Task, VikunjaAPI},
     ui::{parse_datetime, time_since},
 };
 
@@ -31,11 +31,11 @@ pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Opt
     };
 
     if let Some(project) = project {
-        let p_id = api.parse_project_id(project).unwrap();
+        let p_id = ProjectID::parse(api, project).unwrap();
 
         selection = selection
             .into_iter()
-            .filter(|x| x.project_id == p_id)
+            .filter(|x| x.project_id == p_id.0)
             .collect();
     }
 

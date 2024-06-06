@@ -28,6 +28,42 @@ pub struct User {
     pub updated: String,
 }
 
+pub fn get_all_items<F, T>(mut get_page: F) -> Vec<T>
+where
+    F: FnMut(usize) -> Vec<T>,
+{
+    let mut ret = Vec::new();
+    let mut page = 0;
+    loop {
+        let current_page = get_page(page);
+        if current_page.is_empty() {
+            break;
+        }
+        ret.extend(current_page);
+        page += 1;
+    }
+    ret
+}
+
+pub struct ProjectID(pub isize);
+
+impl ProjectID {
+    pub fn parse(api: &VikunjaAPI, project: &str) -> Option<Self> {
+        let project = project.trim_start_matches("#");
+
+        if let Ok(num) = project.parse() {
+            Some(Self(num))
+        } else {
+            Some(Self(
+                api.get_all_projects()
+                    .into_iter()
+                    .find(|x| x.title.contains(project))?
+                    .id,
+            ))
+        }
+    }
+}
+
 pub struct VikunjaAPI {
     host: String,
     token: String,
@@ -72,21 +108,6 @@ impl VikunjaAPI {
         found.title
     }
 
-    pub fn parse_project_id(&self, project: &str) -> Option<isize> {
-        let project = project.trim_start_matches("#");
-
-        if let Ok(num) = project.parse() {
-            Some(num)
-        } else {
-            Some(
-                self.get_all_projects()
-                    .into_iter()
-                    .find(|x| x.title.contains(project))?
-                    .id,
-            )
-        }
-    }
-
     pub fn get_all_projects(&self) -> Vec<Project> {
         let resp = self.get_request("/projects");
         serde_json::from_str(&resp).unwrap()
@@ -99,17 +120,7 @@ impl VikunjaAPI {
 
     // tasks
     pub fn get_all_tasks(&self) -> Vec<Task> {
-        let mut ret = Vec::new();
-        let mut page = 0;
-        loop {
-            let current_page = self.get_task_page(page);
-            if current_page.is_empty() {
-                break;
-            }
-            ret.extend(current_page);
-            page += 1;
-        }
-        ret
+        get_all_items(|x| self.get_task_page(x))
     }
 
     pub fn get_task(&self, id: isize) -> Task {
