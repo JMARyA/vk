@@ -174,6 +174,11 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
+    pub fn get_project(&self, project: &ProjectID) -> Project {
+        let resp = self.get_request(&format!("/projects/{}", project.0));
+        serde_json::from_str(&resp).unwrap()
+    }
+
     // labels
     pub fn get_all_labels(&self) -> Vec<Label> {
         get_all_items(|x| {

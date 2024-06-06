@@ -16,10 +16,7 @@ fn print_task_oneline(task: &Task, projects: &[Project]) {
 
     print_color(crossterm::style::Color::Blue, &task.title);
 
-    let project = projects
-        .into_iter()
-        .find(|x| x.id == task.project_id)
-        .unwrap();
+    let project = projects.iter().find(|x| x.id == task.project_id).unwrap();
     print_color(
         hex_to_color(&project.hex_color).unwrap_or(crossterm::style::Color::Reset),
         &format!(" [{}]", project.title),
@@ -47,7 +44,11 @@ pub fn print_current_tasks(
     project: Option<&String>,
     label: Option<&String>,
 ) {
-    let current_tasks = api.get_latest_tasks();
+    let current_tasks = if project.is_some() || label.is_some() {
+        api.get_all_tasks()
+    } else {
+        api.get_latest_tasks()
+    };
 
     let mut selection: Vec<_> = if done {
         current_tasks
