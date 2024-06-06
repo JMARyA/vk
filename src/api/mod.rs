@@ -152,6 +152,28 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
+    pub fn delete_project(&self, project_id: ProjectID) {
+        self.delete_request(&format!("/projects/{}", project_id.0));
+    }
+
+    pub fn new_project(
+        &self,
+        title: &str,
+        description: Option<&str>,
+        color: Option<&str>,
+        parent: Option<ProjectID>,
+    ) -> Project {
+        let data = serde_json::json!({
+            "description": description,
+            "hex_color": color,
+            "parent_project_id": parent.map(|x| x.0),
+            "title": title
+        });
+
+        let resp = self.put_request("/projects", &data);
+        serde_json::from_str(&resp).unwrap()
+    }
+
     // labels
     pub fn get_all_labels(&self) -> Vec<Label> {
         get_all_items(|x| {

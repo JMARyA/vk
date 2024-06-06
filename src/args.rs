@@ -17,9 +17,28 @@ pub fn get_args() -> clap::ArgMatches {
             command!()
                 .name("prj")
                 .about("Commands about projects")
-                .subcommand(command!().name("ls").about("List projects")),
-            // todo : prj add <project>
-            // todo : prj rm <project>
+                .subcommand(command!().name("ls").about("List projects"))
+                .subcommand(
+                    command!()
+                        .name("add")
+                        .about("Create a new project")
+                        .arg(
+                            arg!(-c --color <color> "HEX Color Code for the project")
+                                .required(false),
+                        )
+                        .arg(
+                            arg!(-d --description <description> "Project description")
+                                .required(false),
+                        )
+                        .arg(arg!(-p --parent <parent> "Parent project").required(false))
+                        .arg(arg!(<title> "Project title").required(true)),
+                )
+                .subcommand(
+                    command!()
+                        .name("rm")
+                        .about("Remove a project")
+                        .arg(arg!(<project> "Project").required(true)),
+                ),
         )
         .subcommand(
             command!()

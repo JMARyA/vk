@@ -28,7 +28,22 @@ fn main() {
             Some(("ls", _)) => {
                 ui::project::list_projects(&api);
             }
-            Some(("add", add_prj_arg)) => {}
+            Some(("add", add_prj_arg)) => {
+                let title: &String = add_prj_arg.get_one("title").unwrap();
+                let description: Option<&String> = add_prj_arg.get_one("description");
+                let color: Option<&String> = add_prj_arg.get_one("color");
+                let parent: Option<&String> = add_prj_arg.get_one("parent");
+                api.new_project(
+                    title,
+                    description.map(|x| x.as_str()),
+                    color.map(|x| x.as_str()),
+                    parent.map(|x| ProjectID::parse(&api, x).unwrap()),
+                );
+            }
+            Some(("rm", rm_prj_arg)) => {
+                let prj: &String = rm_prj_arg.get_one("project").unwrap();
+                api.delete_project(ProjectID::parse(&api, prj).unwrap());
+            }
             _ => {
                 ui::project::list_projects(&api);
             }
