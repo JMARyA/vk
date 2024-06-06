@@ -100,6 +100,11 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     );
 
     println!("Created by {}", task.created_by.username);
+    println!(
+        "Created: {} | Updated: {}",
+        time_since(parse_datetime(&task.created).unwrap()),
+        time_since(parse_datetime(&task.updated).unwrap())
+    );
 
     if let Some(due_date) = parse_datetime(&task.due_date) {
         // todo : color if overdue
@@ -118,15 +123,13 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     }
 
     if let Some(labels) = task.labels {
-        // todo : labels and color
-        println!("Labels: {}", labels.first().unwrap().title);
+        print!("Labels: ");
+        for label in labels {
+            print_label(&label);
+            print!(" ");
+        }
+        println!();
     }
-
-    println!(
-        "Created: {} | Updated: {}",
-        time_since(parse_datetime(&task.created).unwrap()),
-        time_since(parse_datetime(&task.updated).unwrap())
-    );
 
     if task.description != "<p></p>" && !task.description.is_empty() {
         println!("---\n{}", task.description);

@@ -25,9 +25,14 @@ fn main() {
                 ui::project::list_projects(&api);
             }
         },
-        Some(("label", label_args)) => match label_args.subcommand() {
+        Some(("labels", label_args)) => match label_args.subcommand() {
             Some(("ls", _)) => {
                 ui::print_all_labels(&api);
+            }
+            Some(("rm", rm_label_arg)) => {
+                let title: &String = rm_label_arg.get_one("title").unwrap();
+
+                api.remove_label(title);
             }
             Some(("new", new_label_arg)) => {
                 let description: Option<&String> = new_label_arg.get_one("description");
@@ -40,10 +45,19 @@ fn main() {
                     color.map(|x| x.as_str()),
                 );
             }
-            _ => {
-                // todo : label tasks
-            }
+            _ => {}
         },
+        Some(("label", label_args)) => {
+            let label: &String = label_args.get_one("label").unwrap();
+            let task_id: &String = label_args.get_one("task_id").unwrap();
+            let undo = label_args.get_flag("undo");
+
+            if undo {
+                api.label_task_remove(label, task_id.parse().unwrap());
+            } else {
+                api.label_task(label, task_id.parse().unwrap());
+            }
+        }
         Some(("new", new_task_arg)) => {
             let title: &String = new_task_arg.get_one("title").unwrap();
             let project: &String = new_task_arg.get_one("project").unwrap();

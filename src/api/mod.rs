@@ -125,6 +125,18 @@ impl VikunjaAPI {
             .unwrap()
     }
 
+    fn delete_request(&self, path: &str) -> String {
+        let client = reqwest::blocking::Client::new();
+
+        client
+            .delete(format!("{}/api/v1{}", self.host, path))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap()
+    }
+
     // projects
 
     pub fn get_project_name_from_id(&self, id: isize) -> String {
@@ -162,6 +174,47 @@ impl VikunjaAPI {
         );
 
         serde_json::from_str(&resp).unwrap()
+    }
+
+    pub fn remove_label(&self, title: &str) {
+        let labels = self.get_all_labels();
+
+        let label_id = labels
+            .into_iter()
+            .find(|x| x.title.trim() == title)
+            .unwrap()
+            .id;
+
+        self.delete_request(&format!("/labels/{label_id}"));
+    }
+
+    pub fn label_task_remove(&self, label: &str, task_id: isize) {
+        let labels = self.get_all_labels();
+
+        let label_id = labels
+            .into_iter()
+            .find(|x| x.title.trim() == label)
+            .unwrap()
+            .id;
+
+        self.delete_request(&format!("/tasks/{task_id}/labels/{label_id}"));
+    }
+
+    pub fn label_task(&self, label: &str, task_id: isize) {
+        let labels = self.get_all_labels();
+
+        let label_id = labels
+            .into_iter()
+            .find(|x| x.title.trim() == label)
+            .unwrap()
+            .id;
+
+        self.put_request(
+            &format!("/tasks/{task_id}/labels"),
+            &serde_json::json!({
+                "label_id": label_id
+            }),
+        );
     }
 
     // tasks

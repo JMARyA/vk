@@ -35,6 +35,14 @@ pub fn get_args() -> clap::ArgMatches {
         .subcommand(
             command!()
                 .name("label")
+                .about("Add a label to a task")
+                .arg(arg!(-u --undo "Remove label from task").required(false))
+                .arg(arg!([label] "Label").required(true))
+                .arg(arg!([task_id] "Task ID").required(true)),
+        )
+        .subcommand(
+            command!()
+                .name("labels")
                 .about("Manage labels")
                 .subcommand(command!().name("ls").about("List all labels"))
                 .subcommand(
@@ -49,8 +57,13 @@ pub fn get_args() -> clap::ArgMatches {
                                 .required(false),
                         )
                         .arg(arg!(<title> "Label title").required(true)),
-                ), // todo : label rm
-                   // todo : label <label> <task>
+                )
+                .subcommand(
+                    command!()
+                        .name("rm")
+                        .about("Remove a label")
+                        .arg(arg!(<title> "Label title").required(true)),
+                ),
         )
         .subcommand(
             command!()
