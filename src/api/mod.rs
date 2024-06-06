@@ -72,6 +72,21 @@ impl VikunjaAPI {
         found.title
     }
 
+    pub fn parse_project_id(&self, project: &str) -> Option<isize> {
+        let project = project.trim_start_matches("#");
+
+        if let Ok(num) = project.parse() {
+            Some(num)
+        } else {
+            Some(
+                self.get_all_projects()
+                    .into_iter()
+                    .find(|x| x.title.contains(project))?
+                    .id,
+            )
+        }
+    }
+
     pub fn get_all_projects(&self) -> Vec<Project> {
         let resp = self.get_request("/projects");
         serde_json::from_str(&resp).unwrap()

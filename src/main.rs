@@ -27,7 +27,8 @@ fn main() {
         _ => {
             let done = arg.get_flag("done");
             let fav = arg.get_flag("favorite");
-            ui::task::print_current_tasks(&api, done, fav);
+            let project: Option<&String> = arg.get_one("from");
+            ui::task::print_current_tasks(&api, done, fav, project);
         }
     }
 }

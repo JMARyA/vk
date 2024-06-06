@@ -15,20 +15,29 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
     );
 }
 
-pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool) {
+pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Option<&String>) {
     let current_tasks = api.get_all_tasks();
 
-    let selection: Vec<_> = if done {
+    let mut selection: Vec<_> = if done {
         current_tasks
     } else {
         current_tasks.into_iter().filter(|x| !x.done).collect()
     };
 
-    let selection = if fav {
+    selection = if fav {
         selection.into_iter().filter(|x| x.is_favorite).collect()
     } else {
         selection
     };
+
+    if let Some(project) = project {
+        let p_id = api.parse_project_id(project).unwrap();
+
+        selection = selection
+            .into_iter()
+            .filter(|x| x.project_id == p_id)
+            .collect();
+    }
 
     for task in selection {
         print_task_oneline(&task, api);

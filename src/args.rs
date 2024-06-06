@@ -5,6 +5,7 @@ pub fn get_args() -> clap::ArgMatches {
         .about("CLI Tool for Vikunja")
         .arg(arg!(-d --done "Show done tasks too").required(false))
         .arg(arg!(-f --favorite "Show only favorites").required(false))
+        .arg(arg!(--from <project> "Show only tasks from project").required(false))
         .subcommand(
             command!()
                 .name("info")
