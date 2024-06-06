@@ -35,7 +35,7 @@ where
     F: FnMut(usize) -> Vec<T>,
 {
     let mut ret = Vec::new();
-    let mut page = 0;
+    let mut page = 1;
     loop {
         let current_page = get_page(page);
         if current_page.is_empty() {
@@ -154,14 +154,25 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
+    // labels
+    pub fn get_all_labels(&self) -> Vec<Label> {
+        get_all_items(|x| {
+            let resp = self.get_request(&format!("/labels?page={x}"));
+            if resp.trim() == "null" {
+                return Vec::new();
+            }
+            serde_json::from_str(&resp).unwrap()
+        })
+    }
+
+    // tasks
     pub fn get_task_page(&self, page: usize) -> Vec<Task> {
         let resp = self.get_request(&format!("/tasks/all?page={page}"));
         serde_json::from_str(&resp).unwrap()
     }
 
-    // tasks
     pub fn get_all_tasks(&self) -> Vec<Task> {
-        unique_tasks(get_all_items(|x| self.get_task_page(x)))
+        get_all_items(|x| self.get_task_page(x))
     }
 
     pub fn get_task(&self, id: isize) -> Task {

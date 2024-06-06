@@ -1,6 +1,6 @@
 use crate::{
-    api::{ProjectID, Task, VikunjaAPI},
-    ui::{hex_to_color, parse_datetime, print_color, print_color_bg, time_since},
+    api::{Label, ProjectID, Task, VikunjaAPI},
+    ui::{hex_to_color, parse_datetime, print_color, print_color_bg, print_label, time_since},
 };
 
 fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
@@ -25,8 +25,7 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
     if let Some(labels) = &task.labels {
         print!(" ");
         for label in labels {
-            let color = hex_to_color(&label.hex_color).unwrap();
-            print_color_bg(color, &label.title.trim());
+            print_label(label);
             print!(" ");
         }
     }
@@ -34,7 +33,13 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
     print!("\n");
 }
 
-pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Option<&String>) {
+pub fn print_current_tasks(
+    api: &VikunjaAPI,
+    done: bool,
+    fav: bool,
+    project: Option<&String>,
+    label: Option<&String>,
+) {
     // todo : improve performance by using filters -> https://vikunja.io/docs/filters/
     let current_tasks = api.get_all_tasks();
 
@@ -56,6 +61,22 @@ pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Opt
         selection = selection
             .into_iter()
             .filter(|x| x.project_id == p_id.0)
+            .collect();
+    }
+
+    if let Some(label_match) = label {
+        selection = selection
+            .into_iter()
+            .filter(|x| {
+                if let Some(labels) = &x.labels {
+                    for label in labels {
+                        if label.title.trim() == *label_match {
+                            return true;
+                        }
+                    }
+                }
+                false
+            })
             .collect();
     }
 

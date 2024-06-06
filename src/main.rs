@@ -24,6 +24,14 @@ fn main() {
                 ui::project::list_projects(&api);
             }
         },
+        Some(("label", label_args)) => match label_args.subcommand() {
+            Some(("ls", _)) => {
+                ui::print_all_labels(&api);
+            }
+            _ => {
+                ui::print_all_labels(&api);
+            }
+        },
         Some(("new", new_task_arg)) => {
             let title: &String = new_task_arg.get_one("title").unwrap();
             let project: &String = new_task_arg.get_one("project").unwrap();
@@ -39,7 +47,8 @@ fn main() {
             let done = arg.get_flag("done");
             let fav = arg.get_flag("favorite");
             let project: Option<&String> = arg.get_one("from");
-            ui::task::print_current_tasks(&api, done, fav, project);
+            let label: Option<&String> = arg.get_one("label");
+            ui::task::print_current_tasks(&api, done, fav, project, label);
         }
     }
 }

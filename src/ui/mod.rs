@@ -6,6 +6,8 @@ use crossterm::{
     ExecutableCommand,
 };
 
+use crate::api::{Label, VikunjaAPI};
+
 pub mod project;
 pub mod task;
 
@@ -63,5 +65,19 @@ pub fn time_since(event: DateTime<Utc>) -> String {
         return format!("{}m ago", duration.num_minutes());
     } else {
         return "Just now".to_string();
+    }
+}
+
+fn print_label(label: &Label) {
+    let color = hex_to_color(&label.hex_color).unwrap();
+    print_color_bg(color, &label.title.trim());
+}
+
+pub fn print_all_labels(api: &VikunjaAPI) {
+    let labels = api.get_all_labels();
+
+    for label in labels {
+        print_label(&label);
+        print!("\n\n");
     }
 }

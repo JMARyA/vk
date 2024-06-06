@@ -6,6 +6,7 @@ pub fn get_args() -> clap::ArgMatches {
         .arg(arg!(-d --done "Show done tasks too").required(false))
         .arg(arg!(-f --favorite "Show only favorites").required(false))
         .arg(arg!(--from <project> "Show only tasks from project").required(false))
+        .arg(arg!(-l --label <label> "Show only tasks with label").required(false))
         .subcommand(
             command!()
                 .name("info")
@@ -28,6 +29,12 @@ pub fn get_args() -> clap::ArgMatches {
                         .required(false)
                         .default_value("Inbox"),
                 ),
+        )
+        .subcommand(
+            command!()
+                .name("label")
+                .about("Manage labels")
+                .subcommand(command!().name("ls").about("List all labels")),
         )
         .subcommand(
             command!()
