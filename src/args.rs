@@ -104,6 +104,7 @@ pub fn get_args() -> clap::ArgMatches {
         .subcommand(
             command!()
                 .name("done")
+                .arg(arg!(-u --undo "Undo completing the task").required(false))
                 .about("Mark task as done")
                 .arg(arg!([task_id] "Task ID").required(true)),
         )

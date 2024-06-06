@@ -94,7 +94,11 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
             crossterm::style::Color::Green,
             &format!(
                 "{} ✓ ",
-                time_relative(parse_datetime(&task.done_at).unwrap())
+                if let Some(dt) = parse_datetime(&task.done_at) {
+                    time_relative(dt)
+                } else {
+                    String::new()
+                }
             ),
         );
     }
@@ -110,7 +114,10 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
         &format!(" [{}]\n", api.get_project_name_from_id(task.project_id)),
     );
 
-    println!("Created by {}", task.created_by.username);
+    if let Some(user) = task.created_by {
+        println!("Created by {}", user.username);
+    }
+
     println!(
         "Created: {} | Updated: {}",
         time_relative(parse_datetime(&task.created).unwrap()),

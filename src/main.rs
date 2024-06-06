@@ -128,7 +128,9 @@ fn main() {
         }
         Some(("done", done_args)) => {
             let task_id: &String = done_args.get_one("task_id").unwrap();
-            api.done_task(task_id.parse().unwrap());
+            let done = !done_args.get_flag("undo");
+            api.done_task(task_id.parse().unwrap(), done);
+            ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
         _ => {
             let done = arg.get_flag("done");

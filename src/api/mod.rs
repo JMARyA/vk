@@ -282,11 +282,12 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn done_task(&self, task_id: isize) -> Task {
+    pub fn done_task(&self, task_id: isize, done: bool) -> Task {
         let resp = self.post_request(
             &format!("/tasks/{task_id}"),
             &serde_json::json!({
-                "done": true
+                "done": done,
+                "done_at": if done { Some(chrono::Utc::now().to_rfc3339()) } else { None }
             }),
         );
         serde_json::from_str(&resp).unwrap()

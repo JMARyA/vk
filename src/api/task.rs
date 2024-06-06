@@ -32,5 +32,5 @@ pub struct Task {
     pub bucket_id: usize,
     pub position: f64,
     pub kanban_position: f64,
-    pub created_by: User,
+    pub created_by: Option<User>,
 }
