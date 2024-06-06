@@ -48,6 +48,10 @@ fn main() {
                 ui::project::list_projects(&api);
             }
         },
+        Some(("rm", rm_args)) => {
+            let task_id: &String = rm_args.get_one("task_id").unwrap();
+            api.delete_task(task_id.parse().unwrap());
+        }
         Some(("assign", assign_arg)) => {
             let user: &String = assign_arg.get_one("user").unwrap();
             let task_id: &String = assign_arg.get_one("task_id").unwrap();

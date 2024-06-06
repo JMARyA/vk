@@ -106,5 +106,11 @@ pub fn get_args() -> clap::ArgMatches {
                 .about("Mark task as done")
                 .arg(arg!([task_id] "Task ID").required(true)),
         )
+        .subcommand(
+            command!()
+                .name("rm")
+                .about("Remove task")
+                .arg(arg!([task_id] "Task ID").required(true)),
+        )
         .get_matches()
 }

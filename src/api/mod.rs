@@ -259,6 +259,10 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
+    pub fn delete_task(&self, id: isize) {
+        self.delete_request(&format!("/tasks/{id}"));
+    }
+
     pub fn new_task(&self, title: &str, project: &ProjectID) -> Task {
         let id = project.0;
 
