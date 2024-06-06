@@ -1,6 +1,6 @@
 use crate::{
     api::{ProjectID, Task, VikunjaAPI},
-    ui::{parse_datetime, print_color, time_since},
+    ui::{hex_to_color, parse_datetime, print_color, print_color_bg, time_since},
 };
 
 fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
@@ -20,6 +20,15 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
 
     if task.done {
         print_color(crossterm::style::Color::Green, " [✓]");
+    }
+
+    if let Some(labels) = &task.labels {
+        print!(" ");
+        for label in labels {
+            let color = hex_to_color(&label.hex_color).unwrap();
+            print_color_bg(color, &label.title.trim());
+            print!(" ");
+        }
     }
 
     print!("\n");

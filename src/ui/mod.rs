@@ -2,7 +2,7 @@ use std::io::stdout;
 
 use chrono::{DateTime, Utc};
 use crossterm::{
-    style::{Color, SetForegroundColor},
+    style::{Color, SetBackgroundColor, SetForegroundColor},
     ExecutableCommand,
 };
 
@@ -14,6 +14,13 @@ pub fn print_color(color: Color, txt: &str) {
     stdout().execute(SetForegroundColor(color)).unwrap();
     print!("{txt}");
     stdout().execute(SetForegroundColor(Color::Reset)).unwrap();
+}
+
+/// Print `txt` with a custom `color` as background
+pub fn print_color_bg(color: Color, txt: &str) {
+    stdout().execute(SetBackgroundColor(color)).unwrap();
+    print!("{txt}");
+    stdout().execute(SetBackgroundColor(Color::Reset)).unwrap();
 }
 
 /// Convert a HEX Color String into a `Color` struct
