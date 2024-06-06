@@ -1,21 +1,32 @@
 use crate::{
     api::{ProjectID, Task, VikunjaAPI},
-    ui::{parse_datetime, time_since},
+    ui::{parse_datetime, print_color, time_since},
 };
 
 fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
-    let done_indicator = if task.done { "✓" } else { " " };
+    print_color(crossterm::style::Color::Yellow, &format!("({}) ", task.id));
 
-    println!(
-        "[{}] ({}) '{}' [{}]",
-        done_indicator,
-        task.id,
-        task.title,
-        api.get_project_name_from_id(task.project_id),
+    if task.is_favorite {
+        print_color(crossterm::style::Color::Yellow, "⭐ ");
+    }
+
+    print_color(crossterm::style::Color::Blue, &task.title);
+
+    // todo : colors based on project colors
+    print_color(
+        crossterm::style::Color::DarkRed,
+        &format!(" [{}]", api.get_project_name_from_id(task.project_id)),
     );
+
+    if task.done {
+        print_color(crossterm::style::Color::Green, " [✓]");
+    }
+
+    print!("\n");
 }
 
 pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Option<&String>) {
+    // todo : improve performance by using filters -> https://vikunja.io/docs/filters/
     let current_tasks = api.get_all_tasks();
 
     let mut selection: Vec<_> = if done {
@@ -51,7 +62,7 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     } else {
         String::new()
     };
-    let fav_indicator = if task.is_favorite { " ★ " } else { "" };
+    let fav_indicator = if task.is_favorite { " ⭐ " } else { "" };
 
     println!(
         "{}{}'{}' [{}]  [{}]",
