@@ -4,7 +4,7 @@ use super::{Label, User};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
-    pub id: usize,
+    pub id: isize,
     pub title: String,
     pub description: String,
     pub done: bool,

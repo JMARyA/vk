@@ -3,7 +3,7 @@ mod args;
 mod config;
 mod ui;
 
-use api::VikunjaAPI;
+use api::{ProjectID, VikunjaAPI};
 
 fn main() {
     let config: config::Config =
@@ -24,6 +24,17 @@ fn main() {
                 ui::project::list_projects(&api);
             }
         },
+        Some(("new", new_task_arg)) => {
+            let title: &String = new_task_arg.get_one("title").unwrap();
+            let project: &String = new_task_arg.get_one("project").unwrap();
+            let project = ProjectID::parse(&api, project).unwrap();
+            let task = api.new_task(title.as_str(), project);
+            ui::task::print_task_info(task.id, &api);
+        }
+        Some(("done", done_args)) => {
+            let task_id: &String = done_args.get_one("task_id").unwrap();
+            api.done_task(task_id.parse().unwrap());
+        }
         _ => {
             let done = arg.get_flag("done");
             let fav = arg.get_flag("favorite");

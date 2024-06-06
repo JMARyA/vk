@@ -98,6 +98,32 @@ impl VikunjaAPI {
         }
     }
 
+    fn put_request(&self, path: &str, data: serde_json::Value) -> String {
+        let client = reqwest::blocking::Client::new();
+
+        client
+            .put(&format!("{}/api/v1{}", self.host, path))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .json(&data)
+            .send()
+            .unwrap()
+            .text()
+            .unwrap()
+    }
+
+    fn post_request(&self, path: &str, data: serde_json::Value) -> String {
+        let client = reqwest::blocking::Client::new();
+
+        client
+            .post(&format!("{}/api/v1{}", self.host, path))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .json(&data)
+            .send()
+            .unwrap()
+            .text()
+            .unwrap()
+    }
+
     // projects
 
     pub fn get_project_name_from_id(&self, id: isize) -> String {
@@ -125,6 +151,34 @@ impl VikunjaAPI {
 
     pub fn get_task(&self, id: isize) -> Task {
         let resp = self.get_request(&format!("/tasks/{id}"));
+        serde_json::from_str(&resp).unwrap()
+    }
+
+    pub fn new_task(&self, title: &str, project: ProjectID) -> Task {
+        let id = project.0;
+
+        let data = serde_json::json!({
+            "title": title
+        });
+
+        // description
+        // due_date
+        // end_date
+        // is_favorite
+        // labels
+        // priority
+
+        let resp = self.put_request(&format!("/projects/{id}/tasks"), data);
+        serde_json::from_str(&resp).unwrap()
+    }
+
+    pub fn done_task(&self, task_id: isize) -> Task {
+        let resp = self.post_request(
+            &format!("/tasks/{task_id}"),
+            serde_json::json!({
+                "done": true
+            }),
+        );
         serde_json::from_str(&resp).unwrap()
     }
 }

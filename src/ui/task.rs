@@ -57,24 +57,29 @@ pub fn print_current_tasks(api: &VikunjaAPI, done: bool, fav: bool, project: Opt
 
 pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     let task = api.get_task(task_id);
-    let done_indicator = if task.done {
-        format!("{} ✓ ", parse_datetime(&task.done_at).unwrap())
-    } else {
-        String::new()
-    };
-    let fav_indicator = if task.is_favorite { " ⭐ " } else { "" };
 
-    println!(
-        "{}{}'{}' [{}]  [{}]",
-        done_indicator,
-        fav_indicator,
-        task.title,
-        task.id,
-        api.get_project_name_from_id(task.project_id)
+    if task.done {
+        print_color(
+            crossterm::style::Color::Green,
+            &format!("{} ✓ ", time_since(parse_datetime(&task.done_at).unwrap())),
+        );
+    }
+
+    if task.is_favorite {
+        print!("⭐ ");
+    }
+
+    print_color(crossterm::style::Color::Blue, &task.title);
+    print_color(crossterm::style::Color::Yellow, &format!(" ({})", task.id));
+    print_color(
+        crossterm::style::Color::DarkRed,
+        &format!(" [{}]\n", api.get_project_name_from_id(task.project_id)),
     );
+
     println!("Created by {}", task.created_by.username);
 
     if let Some(due_date) = parse_datetime(&task.due_date) {
+        // todo : color if overdue
         println!("Due at {due_date}");
     }
 
@@ -90,6 +95,7 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     }
 
     if let Some(labels) = task.labels {
+        // todo : labels and color
         println!("Labels: {}", labels.first().unwrap().title);
     }
 
@@ -99,7 +105,7 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
         time_since(parse_datetime(&task.updated).unwrap())
     );
 
-    if task.description != "<p></p>" {
+    if task.description != "<p></p>" && !task.description.is_empty() {
         println!("---\n{}", task.description);
     }
 

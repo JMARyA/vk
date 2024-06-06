@@ -18,5 +18,22 @@ pub fn get_args() -> clap::ArgMatches {
                 .about("Commands about projects")
                 .subcommand(command!().name("ls").about("List projects")),
         )
+        .subcommand(
+            command!()
+                .name("new")
+                .about("Create a new task")
+                .arg(arg!([title] "Task title").required(true))
+                .arg(
+                    arg!(-p --project <project> "Project to add task to")
+                        .required(false)
+                        .default_value("Inbox"),
+                ),
+        )
+        .subcommand(
+            command!()
+                .name("done")
+                .about("Mark task as done")
+                .arg(arg!([task_id] "Task ID").required(true)),
+        )
         .get_matches()
 }
