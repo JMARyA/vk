@@ -20,6 +20,7 @@ fn main() {
             Some(("ls", _)) => {
                 ui::project::list_projects(&api);
             }
+            Some(("add", add_prj_arg)) => {}
             _ => {
                 ui::project::list_projects(&api);
             }
@@ -28,15 +29,16 @@ fn main() {
             Some(("ls", _)) => {
                 ui::print_all_labels(&api);
             }
+            Some(("new", new_label_arg)) => {}
             _ => {
-                ui::print_all_labels(&api);
+                // todo : label tasks
             }
         },
         Some(("new", new_task_arg)) => {
             let title: &String = new_task_arg.get_one("title").unwrap();
             let project: &String = new_task_arg.get_one("project").unwrap();
             let project = ProjectID::parse(&api, project).unwrap();
-            let task = api.new_task(title.as_str(), project);
+            let task = api.new_task(title.as_str(), &project);
             ui::task::print_task_info(task.id, &api);
         }
         Some(("done", done_args)) => {

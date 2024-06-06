@@ -46,10 +46,7 @@ fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
         return None;
     }
 
-    match DateTime::parse_from_rfc3339(datetime_str) {
-        Ok(dt) => Some(dt.with_timezone(&Utc)),
-        Err(_) => None, // Return None if parsing fails
-    }
+    DateTime::parse_from_rfc3339(datetime_str).map_or(None, |dt| Some(dt.with_timezone(&Utc)))
 }
 
 /// Return a formatted time duration
@@ -58,19 +55,19 @@ pub fn time_since(event: DateTime<Utc>) -> String {
     let duration = now.signed_duration_since(event);
 
     if duration.num_days() > 0 {
-        return format!("{}d ago", duration.num_days());
+        format!("{}d ago", duration.num_days())
     } else if duration.num_hours() > 0 {
-        return format!("{}h ago", duration.num_hours());
+        format!("{}h ago", duration.num_hours())
     } else if duration.num_minutes() > 0 {
-        return format!("{}m ago", duration.num_minutes());
+        format!("{}m ago", duration.num_minutes())
     } else {
-        return "Just now".to_string();
+        "Just now".to_string()
     }
 }
 
 fn print_label(label: &Label) {
     let color = hex_to_color(&label.hex_color).unwrap();
-    print_color_bg(color, &label.title.trim());
+    print_color_bg(color, label.title.trim());
 }
 
 pub fn print_all_labels(api: &VikunjaAPI) {

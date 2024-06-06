@@ -1,6 +1,6 @@
 use crate::{
-    api::{Label, ProjectID, Task, VikunjaAPI},
-    ui::{hex_to_color, parse_datetime, print_color, print_color_bg, print_label, time_since},
+    api::{ProjectID, Task, VikunjaAPI},
+    ui::{parse_datetime, print_color, print_label, time_since},
 };
 
 fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
@@ -30,7 +30,7 @@ fn print_task_oneline(task: &Task, api: &VikunjaAPI) {
         }
     }
 
-    print!("\n");
+    println!();
 }
 
 pub fn print_current_tasks(
@@ -57,27 +57,20 @@ pub fn print_current_tasks(
 
     if let Some(project) = project {
         let p_id = ProjectID::parse(api, project).unwrap();
-
-        selection = selection
-            .into_iter()
-            .filter(|x| x.project_id == p_id.0)
-            .collect();
+        selection.retain(|x| x.project_id == p_id.0);
     }
 
     if let Some(label_match) = label {
-        selection = selection
-            .into_iter()
-            .filter(|x| {
-                if let Some(labels) = &x.labels {
-                    for label in labels {
-                        if label.title.trim() == *label_match {
-                            return true;
-                        }
+        selection.retain(|x| {
+            if let Some(labels) = &x.labels {
+                for label in labels {
+                    if label.title.trim() == *label_match {
+                        return true;
                     }
                 }
-                false
-            })
-            .collect();
+            }
+            false
+        });
     }
 
     for task in selection {

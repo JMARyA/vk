@@ -18,6 +18,8 @@ pub fn get_args() -> clap::ArgMatches {
                 .name("prj")
                 .about("Commands about projects")
                 .subcommand(command!().name("ls").about("List projects")),
+            // todo : prj add <project>
+            // todo : prj rm <project>
         )
         .subcommand(
             command!()
@@ -35,6 +37,9 @@ pub fn get_args() -> clap::ArgMatches {
                 .name("label")
                 .about("Manage labels")
                 .subcommand(command!().name("ls").about("List all labels")),
+            // todo : label new
+            // todo : label rm
+            // todo : label <label> <task>
         )
         .subcommand(
             command!()

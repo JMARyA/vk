@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 mod project;
@@ -47,24 +45,11 @@ where
     ret
 }
 
-fn unique_tasks(tasks: Vec<Task>) -> Vec<Task> {
-    let mut seen_ids = HashSet::new();
-    let mut unique_tasks = Vec::with_capacity(tasks.len());
-
-    for task in tasks {
-        if seen_ids.insert(task.id) {
-            unique_tasks.push(task);
-        }
-    }
-
-    unique_tasks
-}
-
 pub struct ProjectID(pub isize);
 
 impl ProjectID {
     pub fn parse(api: &VikunjaAPI, project: &str) -> Option<Self> {
-        let project = project.trim_start_matches("#");
+        let project = project.trim_start_matches('#');
 
         if let Ok(num) = project.parse() {
             Some(Self(num))
@@ -95,29 +80,30 @@ impl VikunjaAPI {
     }
 
     fn get_request(&self, path: &str) -> String {
-        if let Some(cached) = self.cache.get(path) {
-            cached
-        } else {
-            let client = reqwest::blocking::Client::new();
+        self.cache.get(path).map_or_else(
+            || {
+                let client = reqwest::blocking::Client::new();
 
-            let ret = client
-                .get(&format!("{}/api/v1{}", self.host, path))
-                .header("Authorization", format!("Bearer {}", self.token))
-                .send()
-                .unwrap()
-                .text()
-                .unwrap();
+                let ret = client
+                    .get(format!("{}/api/v1{}", self.host, path))
+                    .header("Authorization", format!("Bearer {}", self.token))
+                    .send()
+                    .unwrap()
+                    .text()
+                    .unwrap();
 
-            self.cache.insert(path.to_string(), ret.clone());
-            ret
-        }
+                self.cache.insert(path.to_string(), ret.clone());
+                ret
+            },
+            |cached| cached,
+        )
     }
 
-    fn put_request(&self, path: &str, data: serde_json::Value) -> String {
+    fn put_request(&self, path: &str, data: &serde_json::Value) -> String {
         let client = reqwest::blocking::Client::new();
 
         client
-            .put(&format!("{}/api/v1{}", self.host, path))
+            .put(format!("{}/api/v1{}", self.host, path))
             .header("Authorization", format!("Bearer {}", self.token))
             .json(&data)
             .send()
@@ -126,11 +112,11 @@ impl VikunjaAPI {
             .unwrap()
     }
 
-    fn post_request(&self, path: &str, data: serde_json::Value) -> String {
+    fn post_request(&self, path: &str, data: &serde_json::Value) -> String {
         let client = reqwest::blocking::Client::new();
 
         client
-            .post(&format!("{}/api/v1{}", self.host, path))
+            .post(format!("{}/api/v1{}", self.host, path))
             .header("Authorization", format!("Bearer {}", self.token))
             .json(&data)
             .send()
@@ -180,7 +166,7 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn new_task(&self, title: &str, project: ProjectID) -> Task {
+    pub fn new_task(&self, title: &str, project: &ProjectID) -> Task {
         let id = project.0;
 
         let data = serde_json::json!({
@@ -194,14 +180,14 @@ impl VikunjaAPI {
         // labels
         // priority
 
-        let resp = self.put_request(&format!("/projects/{id}/tasks"), data);
+        let resp = self.put_request(&format!("/projects/{id}/tasks"), &data);
         serde_json::from_str(&resp).unwrap()
     }
 
     pub fn done_task(&self, task_id: isize) -> Task {
         let resp = self.post_request(
             &format!("/tasks/{task_id}"),
-            serde_json::json!({
+            &serde_json::json!({
                 "done": true
             }),
         );

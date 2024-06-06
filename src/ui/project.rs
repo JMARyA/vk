@@ -15,7 +15,7 @@ pub fn list_projects(api: &VikunjaAPI) {
     for prj in projects {
         project_map
             .entry(prj.parent_project_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(prj);
     }
 
@@ -26,7 +26,7 @@ pub fn list_projects(api: &VikunjaAPI) {
             hex_to_color(&prj.hex_color).unwrap()
         };
         print_color(color, &prj.title);
-        print!(" [{}]\n", prj.id);
+        println!(" [{}]", prj.id);
 
         if let Some(sub_projects) = project_map.get(&(prj.id as usize)) {
             for sub_prj in sub_projects {
@@ -36,7 +36,7 @@ pub fn list_projects(api: &VikunjaAPI) {
                     hex_to_color(&sub_prj.hex_color).unwrap()
                 };
                 print_color(color, &format!("  - {}", sub_prj.title));
-                print!(" [{}]\n", sub_prj.id);
+                println!(" [{}]", sub_prj.id);
             }
         }
     }
