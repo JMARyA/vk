@@ -45,10 +45,15 @@ vk rm 42
 
 # Mark as done
 vk done 42
+vk done -u 42 # You can undo this
+
+# Mark as favorite
+vk fav 42
+vk fav -u 42 # Undo
 
 # Assign a user to a task
 vk assign me 42
-vk assign -u me 42 # You can undo this
+vk assign -u me 42 # Undo
 ```
 
 **Working with projects:**
@@ -77,4 +82,22 @@ vk labels new mylabel
 
 # Remove a label
 vk labels rm mylabel
+```
+
+**Working with comments:**
+```shell
+# Show comments of task
+vk comments 42
+
+# Comment on a task
+vk comment 42 "my comment"
+```
+
+**Relations:**
+```shell
+# Make Task #42 be a parent task to #7
+vk relation 7 parent 42
+
+# Make #42 blocked by #7
+vk relation 42 blocked 7
 ```
