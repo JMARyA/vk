@@ -49,7 +49,12 @@ pub fn get_args() -> clap::ArgMatches {
                     arg!(-p --project <project> "Project to add task to")
                         .required(false)
                         .default_value("Inbox"),
-                ),
+                )
+                .arg(arg!(-d --description <description> "Task Description").required(false))
+                .arg(arg!(--due <due> "Task Due").required(false))
+                .arg(arg!(-l --label <label> "Task Label").required(false))
+                .arg(arg!(--priority <priority> "Task Label").required(false))
+                .arg(arg!(-f --favorite "Mark task as favorite").required(false)),
         )
         .subcommand(
             command!()

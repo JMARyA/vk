@@ -280,23 +280,40 @@ impl VikunjaAPI {
         self.delete_request(&format!("/tasks/{id}"));
     }
 
-    pub fn new_task(&self, title: &str, project: &ProjectID) -> Task {
+    pub fn new_task(
+        &self,
+        title: &str,
+        project: &ProjectID,
+        description: Option<String>,
+        due_date: Option<String>,
+        fav: bool,
+        label: Option<String>,
+        priority: Option<isize>,
+    ) -> Result<Task, String> {
         let id = project.0;
 
+        let labels = if let Some(label) = label {
+            let label = self
+                .get_all_labels()
+                .into_iter()
+                .find(|x| x.title.trim() == label)
+                .map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?;
+            vec![label]
+        } else {
+            vec![]
+        };
+
         let data = serde_json::json!({
-            "title": title
+            "title": title,
+            "description": description,
+            "due_date": due_date,
+            "is_favorite": fav,
+            "priority": priority,
+            "labels": labels
         });
 
-        // todo :
-        // description
-        // due_date
-        // end_date
-        // is_favorite
-        // labels
-        // priority
-
         let resp = self.put_request(&format!("/projects/{id}/tasks"), &data);
-        serde_json::from_str(&resp).unwrap()
+        Ok(serde_json::from_str(&resp).unwrap())
     }
 
     pub fn done_task(&self, task_id: isize, done: bool) -> Option<Task> {

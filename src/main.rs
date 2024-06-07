@@ -108,6 +108,43 @@ fn load_config() -> config::Config {
     toml::from_str(content).unwrap()
 }
 
+fn parse_datetime(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    let formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.fZ",
+        "%Y-%m-%dT%H:%M:%S%:z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%+%",
+    ];
+
+    let input = input.trim();
+
+    for format in &formats {
+        if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(input, format) {
+            let naive_datetime = naive_date.and_hms_opt(0, 0, 0).unwrap();
+            return Some(chrono::TimeZone::from_utc_datetime(
+                &chrono::Utc,
+                &naive_datetime,
+            ));
+        }
+        if let Ok(naive_datetime) = chrono::NaiveDateTime::parse_from_str(input, format) {
+            return Some(chrono::TimeZone::from_utc_datetime(
+                &chrono::Utc,
+                &naive_datetime,
+            ));
+        }
+        if let Ok(datetime) = chrono::DateTime::parse_from_rfc3339(input) {
+            return Some(datetime.with_timezone(&chrono::Utc));
+        }
+    }
+
+    None
+}
+
 fn main() {
     let arg = args::get_args();
 
@@ -171,8 +208,46 @@ fn main() {
             let title: &String = new_task_arg.get_one("title").unwrap();
             let project: &String = new_task_arg.get_one("project").unwrap();
             let project = ProjectID::parse(&api, project).unwrap();
-            let task = api.new_task(title.as_str(), &project);
-            ui::task::print_task_info(task.id, &api);
+            let description: Option<String> = new_task_arg
+                .get_one::<String>("description")
+                .map(std::borrow::ToOwned::to_owned);
+            let due_date: Option<String> = new_task_arg
+                .get_one::<String>("due")
+                .map(std::borrow::ToOwned::to_owned);
+            let due_date = due_date.map(|x| {
+                if let Some(parsed) = parse_datetime(&x) {
+                    parsed.to_rfc3339()
+                } else {
+                    print_color(crossterm::style::Color::Red, "Failed to parse due date");
+                    println!();
+                    std::process::exit(1);
+                }
+            });
+            let label: Option<String> = new_task_arg
+                .get_one::<String>("label")
+                .map(std::borrow::ToOwned::to_owned);
+            let priority: Option<String> = new_task_arg
+                .get_one::<String>("priority")
+                .map(std::borrow::ToOwned::to_owned);
+            let fav = new_task_arg.get_flag("favorite");
+            // todo : add args
+
+            let task = api.new_task(
+                title.as_str(),
+                &project,
+                description,
+                due_date,
+                fav,
+                label,
+                priority.map(|x| x.parse().unwrap()),
+            );
+            if let Err(msg) = task {
+                print_color(crossterm::style::Color::Red, &msg);
+                println!();
+                std::process::exit(1);
+            } else {
+                ui::task::print_task_info(task.unwrap().id, &api);
+            }
         }
         Some(("done", done_args)) => {
             let task_id: &String = done_args.get_one("task_id").unwrap();
