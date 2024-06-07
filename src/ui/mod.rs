@@ -32,7 +32,7 @@ pub fn print_color_bg(color: Color, txt: &str) {
 }
 
 /// Convert a HEX Color String into a `Color` struct
-fn hex_to_color(hex: &str) -> Result<Color, String> {
+pub fn hex_to_color(hex: &str) -> Result<Color, String> {
     let hex = hex.trim_start_matches('#');
 
     if hex.len() != 6 {
@@ -78,15 +78,14 @@ pub fn time_relative(event: DateTime<Utc>) -> String {
     };
 
     if is_past {
-        format!("{} ago", time_string)
+        format!("{time_string} ago")
     } else {
-        format!("in {}", time_string)
+        format!("in {time_string}")
     }
 }
 
 fn is_in_past(dt: DateTime<Utc>) -> bool {
-    let now = Utc::now();
-    dt < now
+    dt < Utc::now()
 }
 
 fn print_label(label: &Label) {

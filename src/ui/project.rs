@@ -10,7 +10,7 @@ use crate::{
 pub fn list_projects(api: &VikunjaAPI) {
     let projects = api.get_all_projects();
 
-    let mut project_map: HashMap<usize, Vec<Project>> = HashMap::new();
+    let mut project_map: HashMap<isize, Vec<Project>> = HashMap::new();
 
     for prj in projects {
         project_map
@@ -28,7 +28,7 @@ pub fn list_projects(api: &VikunjaAPI) {
         print_color(color, &prj.title);
         println!(" [{}]", prj.id);
 
-        if let Some(sub_projects) = project_map.get(&(prj.id as usize)) {
+        if let Some(sub_projects) = project_map.get(&(prj.id)) {
             for sub_prj in sub_projects {
                 let color = if sub_prj.hex_color.is_empty() {
                     Color::Reset

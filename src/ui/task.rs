@@ -88,18 +88,21 @@ pub fn print_current_tasks(
 }
 
 pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
-    let task = api.get_task(task_id);
+    let task = api.get_task(task_id).unwrap_or_else(|()| {
+        print_color(
+            crossterm::style::Color::Red,
+            &format!("Could not get task #{task_id}"),
+        );
+        println!();
+        std::process::exit(1);
+    });
 
     if task.done {
         print_color(
             crossterm::style::Color::Green,
             &format!(
                 "{} ✓ ",
-                if let Some(dt) = parse_datetime(&task.done_at) {
-                    time_relative(dt)
-                } else {
-                    String::new()
-                }
+                parse_datetime(&task.done_at).map_or_else(String::new, time_relative)
             ),
         );
     }

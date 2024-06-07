@@ -1681,6 +1681,7 @@ dependencies = [
  "dirs",
  "html2text",
  "moka",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",

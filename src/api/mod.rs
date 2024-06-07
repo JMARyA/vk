@@ -12,6 +12,14 @@ use moka::sync::Cache;
 use task::TaskRelation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VikunjaError {
+    pub code: Option<isize>,
+    pub message: String,
+}
+
+impl VikunjaError {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Label {
     pub id: usize,
     pub title: String,
@@ -155,7 +163,7 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn delete_project(&self, project_id: ProjectID) {
+    pub fn delete_project(&self, project_id: &ProjectID) {
         self.delete_request(&format!("/projects/{}", project_id.0));
     }
 
@@ -202,7 +210,6 @@ impl VikunjaAPI {
                 "hex_color": color
             }),
         );
-
         serde_json::from_str(&resp).unwrap()
     }
 
@@ -230,13 +237,13 @@ impl VikunjaAPI {
         self.delete_request(&format!("/tasks/{task_id}/labels/{label_id}"));
     }
 
-    pub fn label_task(&self, label: &str, task_id: isize) {
+    pub fn label_task(&self, label: &str, task_id: isize) -> Result<(), String> {
         let labels = self.get_all_labels();
 
         let label_id = labels
             .into_iter()
             .find(|x| x.title.trim() == label)
-            .unwrap()
+            .map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?
             .id;
 
         self.put_request(
@@ -245,6 +252,8 @@ impl VikunjaAPI {
                 "label_id": label_id
             }),
         );
+
+        Ok(())
     }
 
     // tasks
@@ -262,9 +271,9 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn get_task(&self, id: isize) -> Task {
+    pub fn get_task(&self, id: isize) -> Result<Task, ()> {
         let resp = self.get_request(&format!("/tasks/{id}"));
-        serde_json::from_str(&resp).unwrap()
+        serde_json::from_str(&resp).map_or(Err(()), Ok)
     }
 
     pub fn delete_task(&self, id: isize) {
@@ -290,7 +299,7 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn done_task(&self, task_id: isize, done: bool) -> Task {
+    pub fn done_task(&self, task_id: isize, done: bool) -> Option<Task> {
         let resp = self.post_request(
             &format!("/tasks/{task_id}"),
             &serde_json::json!({
@@ -298,17 +307,18 @@ impl VikunjaAPI {
                 "done_at": if done { Some(chrono::Utc::now().to_rfc3339()) } else { None }
             }),
         );
-        serde_json::from_str(&resp).unwrap()
+        serde_json::from_str(&resp).ok()
     }
 
-    pub fn fav_task(&self, task_id: isize, fav: bool) -> Task {
+    pub fn fav_task(&self, task_id: isize, fav: bool) -> Option<Task> {
         let resp = self.post_request(
             &format!("/tasks/{task_id}"),
             &serde_json::json!({
                 "is_favorite": fav
             }),
         );
-        serde_json::from_str(&resp).unwrap()
+
+        serde_json::from_str(&resp).ok()
     }
 
     pub fn login(&self, username: &str, password: &str, totp: Option<&str>) -> String {
@@ -336,8 +346,10 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).ok()
     }
 
-    pub fn assign_to_task(&self, user: &str, task_id: isize) {
-        let user = self.search_user(user).unwrap();
+    pub fn assign_to_task(&self, user: &str, task_id: isize) -> Result<(), String> {
+        let user = self
+            .search_user(user)
+            .map_or_else(|| Err(String::from("User not found")), Ok)?;
 
         self.put_request(
             &format!("/tasks/{task_id}/assignees"),
@@ -345,6 +357,8 @@ impl VikunjaAPI {
                 "user_id": user.first().unwrap().id
             }),
         );
+
+        Ok(())
     }
 
     pub fn remove_assign_to_task(&self, user: &str, task_id: isize) {
@@ -358,7 +372,7 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
-    pub fn remove_relation(&self, task_id: isize, relation: Relation, other_task_id: isize) {
+    pub fn remove_relation(&self, task_id: isize, relation: &Relation, other_task_id: isize) {
         self.delete_request(&format!(
             "/tasks/{task_id}/relations/{}/{other_task_id}",
             relation.api()
@@ -368,7 +382,7 @@ impl VikunjaAPI {
     pub fn add_relation(
         &self,
         task_id: isize,
-        relation: Relation,
+        relation: &Relation,
         other_task_id: isize,
     ) -> TaskRelation {
         let resp = self.put_request(

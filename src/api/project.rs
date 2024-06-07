@@ -9,7 +9,7 @@ pub struct Project {
     pub description: String,
     pub identifier: String,
     pub hex_color: String,
-    pub parent_project_id: usize,
+    pub parent_project_id: isize,
     pub default_bucket_id: usize,
     pub done_bucket_id: usize,
     pub owner: Option<User>,

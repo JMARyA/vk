@@ -3,14 +3,17 @@ mod args;
 mod config;
 mod ui;
 
+use std::path::PathBuf;
+
 use api::{ProjectID, Relation, VikunjaAPI};
+use clap::ArgMatches;
+use once_cell::sync::Lazy;
+use ui::{hex_to_color, print_color};
 
-// todo : error handling
+static CONFIG_PATH: Lazy<PathBuf> =
+    Lazy::new(|| dirs::home_dir().unwrap().join(".config").join("vk.toml"));
 
-fn main() {
-    let arg = args::get_args();
-    let config_path = dirs::home_dir().unwrap().join(".config").join("vk.toml");
-
+fn login_cmd(arg: &ArgMatches) {
     if let Some(("login", login_arg)) = arg.subcommand() {
         let username: &String = login_arg.get_one("username").unwrap();
         let password: &String = login_arg.get_one("password").unwrap();
@@ -25,14 +28,75 @@ fn main() {
 
         let api = VikunjaAPI::new(&host, "");
 
-        let token = api.login(username, password, totp.map(|x| x.as_str()));
+        let token = api.login(username, password, totp.map(std::string::String::as_str));
         let config = format!("host = \"{host}\"\ntoken = \"{token}\"");
 
-        std::fs::write(config_path, config).unwrap();
+        std::fs::write(CONFIG_PATH.clone(), config).unwrap();
         std::process::exit(0);
     }
+}
 
-    let content = &std::fs::read_to_string(config_path).unwrap_or_else(|e| {
+fn project_commands(arg: &ArgMatches, api: &VikunjaAPI) {
+    match arg.subcommand() {
+        Some(("add", add_prj_arg)) => {
+            let title: &String = add_prj_arg.get_one("title").unwrap();
+            let description: Option<&String> = add_prj_arg.get_one("description");
+            let color: Option<&String> = add_prj_arg.get_one("color");
+            let parent: Option<&String> = add_prj_arg.get_one("parent");
+            api.new_project(
+                title,
+                description.map(std::string::String::as_str),
+                color.map(std::string::String::as_str),
+                parent.map(|x| ProjectID::parse(api, x).unwrap()),
+            );
+        }
+        Some(("rm", rm_prj_arg)) => {
+            let prj: &String = rm_prj_arg.get_one("project").unwrap();
+            api.delete_project(&ProjectID::parse(api, prj).unwrap());
+        }
+        _ => {
+            ui::project::list_projects(api);
+        }
+    }
+}
+
+fn label_commands(arg: &ArgMatches, api: &VikunjaAPI) {
+    match arg.subcommand() {
+        Some(("rm", rm_label_arg)) => {
+            let title: &String = rm_label_arg.get_one("title").unwrap();
+
+            api.remove_label(title);
+        }
+        Some(("new", new_label_arg)) => {
+            let description: Option<&String> = new_label_arg.get_one("description");
+            let color: Option<&String> = new_label_arg.get_one("color");
+            let title: &String = new_label_arg.get_one("title").unwrap();
+
+            if let Some(color) = color {
+                if hex_to_color(color).is_err() {
+                    print_color(
+                        crossterm::style::Color::Red,
+                        &format!("'{color}' is no hex color"),
+                    );
+                    println!();
+                    std::process::exit(1);
+                }
+            }
+
+            api.new_label(
+                title.as_str(),
+                description.map(std::string::String::as_str),
+                color.map(std::string::String::as_str),
+            );
+        }
+        _ => {
+            ui::print_all_labels(api);
+        }
+    }
+}
+
+fn load_config() -> config::Config {
+    let content = &std::fs::read_to_string(CONFIG_PATH.clone()).unwrap_or_else(|e| {
         ui::print_color(
             crossterm::style::Color::Red,
             &format!("Could not read config file: {e}"),
@@ -41,7 +105,15 @@ fn main() {
         std::process::exit(1);
     });
 
-    let config: config::Config = toml::from_str(content).unwrap();
+    toml::from_str(content).unwrap()
+}
+
+fn main() {
+    let arg = args::get_args();
+
+    login_cmd(&arg);
+
+    let config = load_config();
     let api = VikunjaAPI::new(&config.host, &config.token);
 
     match arg.subcommand() {
@@ -49,30 +121,7 @@ fn main() {
             let task_id: &String = task_info_arg.get_one("task_id").unwrap();
             ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
-        Some(("prj", prj_arg)) => match prj_arg.subcommand() {
-            Some(("ls", _)) => {
-                ui::project::list_projects(&api);
-            }
-            Some(("add", add_prj_arg)) => {
-                let title: &String = add_prj_arg.get_one("title").unwrap();
-                let description: Option<&String> = add_prj_arg.get_one("description");
-                let color: Option<&String> = add_prj_arg.get_one("color");
-                let parent: Option<&String> = add_prj_arg.get_one("parent");
-                api.new_project(
-                    title,
-                    description.map(|x| x.as_str()),
-                    color.map(|x| x.as_str()),
-                    parent.map(|x| ProjectID::parse(&api, x).unwrap()),
-                );
-            }
-            Some(("rm", rm_prj_arg)) => {
-                let prj: &String = rm_prj_arg.get_one("project").unwrap();
-                api.delete_project(ProjectID::parse(&api, prj).unwrap());
-            }
-            _ => {
-                ui::project::list_projects(&api);
-            }
-        },
+        Some(("prj", prj_arg)) => project_commands(prj_arg, &api),
         Some(("rm", rm_args)) => {
             let task_id: &String = rm_args.get_one("task_id").unwrap();
             api.delete_task(task_id.parse().unwrap());
@@ -84,8 +133,9 @@ fn main() {
 
             if undo {
                 api.remove_assign_to_task(user, task_id.parse().unwrap());
-            } else {
-                api.assign_to_task(user, task_id.parse().unwrap());
+            } else if let Err(msg) = api.assign_to_task(user, task_id.parse().unwrap()) {
+                print_color(crossterm::style::Color::Red, &msg);
+                println!();
             }
         }
         Some(("comments", c_arg)) => {
@@ -102,27 +152,7 @@ fn main() {
 
             api.new_comment(task_id.parse().unwrap(), comment);
         }
-        Some(("labels", label_args)) => match label_args.subcommand() {
-            Some(("rm", rm_label_arg)) => {
-                let title: &String = rm_label_arg.get_one("title").unwrap();
-
-                api.remove_label(title);
-            }
-            Some(("new", new_label_arg)) => {
-                let description: Option<&String> = new_label_arg.get_one("description");
-                let color: Option<&String> = new_label_arg.get_one("color");
-                let title: &String = new_label_arg.get_one("title").unwrap();
-
-                api.new_label(
-                    title.as_str(),
-                    description.map(|x| x.as_str()),
-                    color.map(|x| x.as_str()),
-                );
-            }
-            _ => {
-                ui::print_all_labels(&api);
-            }
-        },
+        Some(("labels", label_args)) => label_commands(label_args, &api),
         Some(("label", label_args)) => {
             let label: &String = label_args.get_one("label").unwrap();
             let task_id: &String = label_args.get_one("task_id").unwrap();
@@ -130,9 +160,12 @@ fn main() {
 
             if undo {
                 api.label_task_remove(label, task_id.parse().unwrap());
-            } else {
-                api.label_task(label, task_id.parse().unwrap());
+            } else if let Err(msg) = api.label_task(label, task_id.parse().unwrap()) {
+                print_color(crossterm::style::Color::Red, &msg);
+                println!();
+                std::process::exit(1);
             }
+            ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
         Some(("new", new_task_arg)) => {
             let title: &String = new_task_arg.get_one("title").unwrap();
@@ -160,18 +193,18 @@ fn main() {
             let sec_task_id: &String = rel_args.get_one("second_task_id").unwrap();
             let delete = rel_args.get_flag("delete");
 
-            let relation = Relation::try_parse(&relation).unwrap();
+            let relation = Relation::try_parse(relation).unwrap();
 
             if delete {
                 api.remove_relation(
                     task_id.parse().unwrap(),
-                    relation,
+                    &relation,
                     sec_task_id.parse().unwrap(),
                 );
             } else {
                 api.add_relation(
                     task_id.parse().unwrap(),
-                    relation,
+                    &relation,
                     sec_task_id.parse().unwrap(),
                 );
             }

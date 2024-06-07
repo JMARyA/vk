@@ -91,36 +91,36 @@ impl Relation {
 
     pub fn repr(&self) -> String {
         match self {
-            Relation::Unknown => "Unknown",
-            Relation::Subtask => "Subtask",
-            Relation::ParentTask => "Parent Task",
-            Relation::Related => "Related",
-            Relation::DuplicateOf => "Duplicate of",
-            Relation::Duplicates => "Duplicates",
-            Relation::Blocking => "Blocking",
-            Relation::Blocked => "Blocked by",
-            Relation::Precedes => "Precedes",
-            Relation::Follows => "Follows",
-            Relation::CopiedFrom => "Copied from",
-            Relation::CopiedTo => "Copied to",
+            Self::Unknown => "Unknown",
+            Self::Subtask => "Subtask",
+            Self::ParentTask => "Parent Task",
+            Self::Related => "Related",
+            Self::DuplicateOf => "Duplicate of",
+            Self::Duplicates => "Duplicates",
+            Self::Blocking => "Blocking",
+            Self::Blocked => "Blocked by",
+            Self::Precedes => "Precedes",
+            Self::Follows => "Follows",
+            Self::CopiedFrom => "Copied from",
+            Self::CopiedTo => "Copied to",
         }
         .to_string()
     }
 
     pub fn api(&self) -> String {
         match self {
-            Relation::Unknown => "unknown",
-            Relation::Subtask => "subtask",
-            Relation::ParentTask => "parenttask",
-            Relation::Related => "related",
-            Relation::DuplicateOf => "duplicateof",
-            Relation::Duplicates => "duplicates",
-            Relation::Blocking => "blocking",
-            Relation::Blocked => "blocked",
-            Relation::Precedes => "precedes",
-            Relation::Follows => "follows",
-            Relation::CopiedFrom => "copiedfrom",
-            Relation::CopiedTo => "copiedto",
+            Self::Unknown => "unknown",
+            Self::Subtask => "subtask",
+            Self::ParentTask => "parenttask",
+            Self::Related => "related",
+            Self::DuplicateOf => "duplicateof",
+            Self::Duplicates => "duplicates",
+            Self::Blocking => "blocking",
+            Self::Blocked => "blocked",
+            Self::Precedes => "precedes",
+            Self::Follows => "follows",
+            Self::CopiedFrom => "copiedfrom",
+            Self::CopiedTo => "copiedto",
         }
         .to_string()
     }
