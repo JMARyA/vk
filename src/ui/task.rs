@@ -1,5 +1,5 @@
 use crate::{
-    api::{Project, ProjectID, Task, VikunjaAPI},
+    api::{Comment, Project, ProjectID, Task, VikunjaAPI},
     ui::{
         format_html_to_terminal, hex_to_color, is_in_past, parse_datetime, print_color,
         print_label, time_relative,
@@ -170,4 +170,15 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
     }
 
     // pub percent_done: f64,
+}
+
+pub fn print_comment(comment: &Comment) {
+    print_color(crossterm::style::Color::Blue, &comment.author.username);
+    print!(
+        " ({}): ",
+        time_relative(parse_datetime(&comment.created).unwrap())
+    );
+    println!();
+    print!("{}", format_html_to_terminal(&comment.comment));
+    println!();
 }

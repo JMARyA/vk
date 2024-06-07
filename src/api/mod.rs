@@ -4,6 +4,7 @@ mod project;
 mod task;
 
 pub use project::Project;
+pub use task::Comment;
 pub use task::Task;
 
 use moka::sync::Cache;
@@ -348,5 +349,10 @@ impl VikunjaAPI {
         let user = self.search_user(user).unwrap();
         let user_id = user.first().unwrap().id;
         self.delete_request(&format!("/tasks/{task_id}/assignees/{user_id}"));
+    }
+
+    pub fn get_task_comments(&self, task_id: isize) -> Vec<Comment> {
+        let resp = self.get_request(&format!("/tasks/{task_id}/comments"));
+        serde_json::from_str(&resp).unwrap()
     }
 }

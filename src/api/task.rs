@@ -34,3 +34,12 @@ pub struct Task {
     pub kanban_position: f64,
     pub created_by: Option<User>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Comment {
+    pub author: User,
+    pub comment: String,
+    pub created: String,
+    pub id: isize,
+    pub updated: String,
+}

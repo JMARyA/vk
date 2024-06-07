@@ -5,6 +5,10 @@ mod ui;
 
 use api::{ProjectID, VikunjaAPI};
 
+// todo : error handling
+// todo : task relations
+// todo : task comments
+
 fn main() {
     let arg = args::get_args();
     let config_path = dirs::home_dir().unwrap().join(".config").join("vk.toml");
@@ -86,10 +90,15 @@ fn main() {
                 api.assign_to_task(user, task_id.parse().unwrap());
             }
         }
-        Some(("labels", label_args)) => match label_args.subcommand() {
-            Some(("ls", _)) => {
-                ui::print_all_labels(&api);
+        Some(("comments", c_arg)) => {
+            let task_id: &String = c_arg.get_one("task_id").unwrap();
+            let comments = api.get_task_comments(task_id.parse().unwrap());
+
+            for comment in comments {
+                ui::task::print_comment(&comment);
             }
+        }
+        Some(("labels", label_args)) => match label_args.subcommand() {
             Some(("rm", rm_label_arg)) => {
                 let title: &String = rm_label_arg.get_one("title").unwrap();
 
@@ -106,7 +115,9 @@ fn main() {
                     color.map(|x| x.as_str()),
                 );
             }
-            _ => {}
+            _ => {
+                ui::print_all_labels(&api);
+            }
         },
         Some(("label", label_args)) => {
             let label: &String = label_args.get_one("label").unwrap();
