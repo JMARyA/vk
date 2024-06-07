@@ -5,9 +5,11 @@ mod task;
 
 pub use project::Project;
 pub use task::Comment;
+pub use task::Relation;
 pub use task::Task;
 
 use moka::sync::Cache;
+use task::TaskRelation;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Label {
@@ -353,6 +355,30 @@ impl VikunjaAPI {
 
     pub fn get_task_comments(&self, task_id: isize) -> Vec<Comment> {
         let resp = self.get_request(&format!("/tasks/{task_id}/comments"));
+        serde_json::from_str(&resp).unwrap()
+    }
+
+    pub fn remove_relation(&self, task_id: isize, relation: Relation, other_task_id: isize) {
+        self.delete_request(&format!(
+            "/tasks/{task_id}/relations/{}/{other_task_id}",
+            relation.api()
+        ));
+    }
+
+    pub fn add_relation(
+        &self,
+        task_id: isize,
+        relation: Relation,
+        other_task_id: isize,
+    ) -> TaskRelation {
+        let resp = self.put_request(
+            &format!("/tasks/{task_id}/relations"),
+            &serde_json::json!({
+                "task_id": task_id,
+                "other_task_id": other_task_id,
+                "relation_kind": relation.api()
+            }),
+        );
         serde_json::from_str(&resp).unwrap()
     }
 

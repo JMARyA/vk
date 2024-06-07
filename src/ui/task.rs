@@ -1,5 +1,5 @@
 use crate::{
-    api::{Comment, Project, ProjectID, Task, VikunjaAPI},
+    api::{Comment, Project, ProjectID, Relation, Task, VikunjaAPI},
     ui::{
         format_html_to_terminal, hex_to_color, is_in_past, parse_datetime, print_color,
         print_label, time_relative,
@@ -157,16 +157,31 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
         println!();
     }
 
-    if task.description != "<p></p>" && !task.description.is_empty() {
-        println!("---\n{}", format_html_to_terminal(&task.description));
-    }
-
     if let Some(assigned) = task.assignees {
         print!("Assigned to: ");
         for assignee in assigned {
             print!("{} ", assignee.username);
         }
         println!();
+    }
+
+    if let Some(related) = task.related_tasks {
+        for relation in related {
+            print_color(
+                crossterm::style::Color::Magenta,
+                &format!("{}: ", Relation::try_parse(&relation.0).unwrap().repr()),
+            );
+            for t in relation.1 {
+                print_color(crossterm::style::Color::Blue, &t.title);
+                print_color(crossterm::style::Color::Yellow, &format!(" ({})", t.id));
+                print!(" ");
+            }
+            println!();
+        }
+    }
+
+    if task.description != "<p></p>" && !task.description.is_empty() {
+        println!("---\n{}", format_html_to_terminal(&task.description));
     }
 
     // pub percent_done: f64,

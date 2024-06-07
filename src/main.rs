@@ -3,10 +3,9 @@ mod args;
 mod config;
 mod ui;
 
-use api::{ProjectID, VikunjaAPI};
+use api::{ProjectID, Relation, VikunjaAPI};
 
 // todo : error handling
-// todo : task relations
 
 fn main() {
     let arg = args::get_args();
@@ -153,6 +152,30 @@ fn main() {
             let undo = fav_args.get_flag("undo");
 
             api.fav_task(task_id.parse().unwrap(), !undo);
+            ui::task::print_task_info(task_id.parse().unwrap(), &api);
+        }
+        Some(("relation", rel_args)) => {
+            let task_id: &String = rel_args.get_one("task_id").unwrap();
+            let relation: &String = rel_args.get_one("relation").unwrap();
+            let sec_task_id: &String = rel_args.get_one("second_task_id").unwrap();
+            let delete = rel_args.get_flag("delete");
+
+            let relation = Relation::try_parse(&relation).unwrap();
+
+            if delete {
+                api.remove_relation(
+                    task_id.parse().unwrap(),
+                    relation,
+                    sec_task_id.parse().unwrap(),
+                );
+            } else {
+                api.add_relation(
+                    task_id.parse().unwrap(),
+                    relation,
+                    sec_task_id.parse().unwrap(),
+                );
+            }
+
             ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
         _ => {

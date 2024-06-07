@@ -83,6 +83,15 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .subcommand(
             command!()
+                .name("relation")
+                .about("Set task relations")
+                .arg(arg!(-d --delete "Delete the relation").required(false))
+                .arg(arg!([task_id] "Task ID").required(true))
+                .arg(arg!([relation] "Relation").required(true))
+                .arg(arg!([second_task_id] "Other Task ID").required(true)),
+        )
+        .subcommand(
+            command!()
                 .name("fav")
                 .about("Favorite a task")
                 .arg(arg!(-u --undo "Remove favorite from task").required(false))
