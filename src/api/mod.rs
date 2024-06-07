@@ -298,6 +298,16 @@ impl VikunjaAPI {
         serde_json::from_str(&resp).unwrap()
     }
 
+    pub fn fav_task(&self, task_id: isize, fav: bool) -> Task {
+        let resp = self.post_request(
+            &format!("/tasks/{task_id}"),
+            &serde_json::json!({
+                "is_favorite": fav
+            }),
+        );
+        serde_json::from_str(&resp).unwrap()
+    }
+
     pub fn login(&self, username: &str, password: &str, totp: Option<&str>) -> String {
         let resp = self.post_request(
             "/login",

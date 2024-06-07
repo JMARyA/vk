@@ -70,6 +70,13 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .subcommand(
             command!()
+                .name("fav")
+                .about("Favorite a task")
+                .arg(arg!(-u --undo "Remove favorite from task").required(false))
+                .arg(arg!([task_id] "Task ID").required(true)),
+        )
+        .subcommand(
+            command!()
                 .name("label")
                 .about("Add a label to a task")
                 .arg(arg!(-u --undo "Remove label from task").required(false))

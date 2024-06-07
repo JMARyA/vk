@@ -132,6 +132,13 @@ fn main() {
             api.done_task(task_id.parse().unwrap(), done);
             ui::task::print_task_info(task_id.parse().unwrap(), &api);
         }
+        Some(("fav", fav_args)) => {
+            let task_id: &String = fav_args.get_one("task_id").unwrap();
+            let undo = fav_args.get_flag("undo");
+
+            api.fav_task(task_id.parse().unwrap(), !undo);
+            ui::task::print_task_info(task_id.parse().unwrap(), &api);
+        }
         _ => {
             let done = arg.get_flag("done");
             let fav = arg.get_flag("favorite");
