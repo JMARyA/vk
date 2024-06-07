@@ -76,6 +76,13 @@ pub fn get_args() -> clap::ArgMatches {
         )
         .subcommand(
             command!()
+                .name("comment")
+                .about("Comment on a task")
+                .arg(arg!([task_id] "Task ID").required(true))
+                .arg(arg!([comment] "Comment").required(true)),
+        )
+        .subcommand(
+            command!()
                 .name("fav")
                 .about("Favorite a task")
                 .arg(arg!(-u --undo "Remove favorite from task").required(false))

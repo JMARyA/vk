@@ -7,7 +7,6 @@ use api::{ProjectID, VikunjaAPI};
 
 // todo : error handling
 // todo : task relations
-// todo : task comments
 
 fn main() {
     let arg = args::get_args();
@@ -97,6 +96,12 @@ fn main() {
             for comment in comments {
                 ui::task::print_comment(&comment);
             }
+        }
+        Some(("comment", comment_arg)) => {
+            let task_id: &String = comment_arg.get_one("task_id").unwrap();
+            let comment: &String = comment_arg.get_one("comment").unwrap();
+
+            api.new_comment(task_id.parse().unwrap(), comment);
         }
         Some(("labels", label_args)) => match label_args.subcommand() {
             Some(("rm", rm_label_arg)) => {

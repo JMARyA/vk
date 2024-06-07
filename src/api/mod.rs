@@ -355,4 +355,14 @@ impl VikunjaAPI {
         let resp = self.get_request(&format!("/tasks/{task_id}/comments"));
         serde_json::from_str(&resp).unwrap()
     }
+
+    pub fn new_comment(&self, task_id: isize, comment: &str) -> Comment {
+        let resp = self.put_request(
+            &format!("/tasks/{task_id}/comments"),
+            &serde_json::json!({
+                "comment": comment
+            }),
+        );
+        serde_json::from_str(&resp).unwrap()
+    }
 }
