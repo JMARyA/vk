@@ -175,6 +175,7 @@ pub fn print_task_info(task_id: isize, api: &VikunjaAPI) {
                 &format!("{}: ", Relation::try_parse(&relation.0).unwrap().repr()),
             );
             for t in relation.1 {
+                // todo : add done indication
                 print_color(crossterm::style::Color::Blue, &t.title);
                 print_color(crossterm::style::Color::Yellow, &format!(" ({})", t.id));
                 print!(" ");

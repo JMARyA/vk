@@ -342,6 +342,7 @@ impl VikunjaAPI {
         let resp = self.post_request(
             "/login",
             &serde_json::json!({
+                "long_token": true,
                 "username": username,
                 "password": password,
                 "totp_passcode": totp
