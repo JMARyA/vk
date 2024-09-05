@@ -68,7 +68,7 @@ impl ProjectID {
             Some(Self(
                 api.get_all_projects()
                     .into_iter()
-                    .find(|x| x.title.contains(project))?
+                    .find(|x| x.title.to_lowercase().contains(&project.to_lowercase()))?
                     .id,
             ))
         }
