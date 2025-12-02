@@ -5,8 +5,8 @@ edition = "2021"
 authors = ["JMARyA <jmarya@hydrar.de>"]
 
 [dependencies]
+argh = "0.1.13"
 chrono = "0.4.38"
-clap = { version = "4.5.4", features = ["cargo"] }
 crossterm = "0.27.0"
 dirs = "5.0.1"
 html2text = "0.12.5"

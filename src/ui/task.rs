@@ -50,8 +50,8 @@ pub async fn print_current_tasks(
     api: &VikunjaAPI,
     done: bool,
     fav: bool,
-    project: Option<&String>,
-    label: Option<&String>,
+    project: Option<String>,
+    label: Option<String>,
 ) {
     let current_tasks = if project.is_some() || label.is_some() {
         api.get_all_tasks().await
@@ -78,7 +78,7 @@ pub async fn print_current_tasks(
     };
 
     if let Some(project) = project {
-        let p_id = ProjectID::parse(api, project).await.unwrap();
+        let p_id = ProjectID::parse(api, &project).await.unwrap();
         selection.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
     }
 
@@ -86,7 +86,7 @@ pub async fn print_current_tasks(
         selection.retain(|x| {
             if let Some(labels) = &x.labels {
                 for label in labels {
-                    if label.title.as_ref().unwrap().trim() == *label_match {
+                    if label.title.as_ref().unwrap().trim() == label_match {
                         return true;
                     }
                 }

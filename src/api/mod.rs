@@ -218,7 +218,7 @@ impl VikunjaAPI {
             .unwrap();
     }
 
-    pub async fn label_task_remove(&self, label: &str, task_id: isize) {
+    pub async fn label_task_remove(&self, label: &str, task_id: i32) {
         let labels = self.get_all_labels().await;
 
         let label_id = labels
@@ -230,7 +230,7 @@ impl VikunjaAPI {
 
         vikunjars::apis::labels_api::tasks_task_labels_label_delete(
             &self.configuration,
-            task_id as i32,
+            task_id,
             label_id,
         )
         .await
@@ -240,7 +240,7 @@ impl VikunjaAPI {
     pub async fn label_task(
         &self,
         label: &str,
-        task_id: isize,
+        task_id: i32,
     ) -> Result<ModelsLabelTask, vikunjars::apis::Error<TasksTaskLabelsPutError>> {
         let labels = self.get_all_labels().await;
 
@@ -254,7 +254,7 @@ impl VikunjaAPI {
 
         vikunjars::apis::labels_api::tasks_task_labels_put(
             &self.configuration,
-            task_id as i32,
+            task_id,
             ModelsLabelTask {
                 label_id: Some(label_id),
                 ..Default::default()
@@ -312,8 +312,8 @@ impl VikunjaAPI {
         vikunjars::apis::task_api::tasks_id_get(&self.configuration, id).await
     }
 
-    pub async fn delete_task(&self, id: isize) {
-        vikunjars::apis::task_api::tasks_id_delete(&self.configuration, id as i32)
+    pub async fn delete_task(&self, id: i32) {
+        vikunjars::apis::task_api::tasks_id_delete(&self.configuration, id)
             .await
             .unwrap();
     }
@@ -362,7 +362,7 @@ impl VikunjaAPI {
 
     pub async fn done_task(
         &self,
-        task_id: isize,
+        task_id: i32,
         done: bool,
     ) -> Result<ModelsTask, Error<TasksIdPostError>> {
         let task = ModelsTask {
@@ -374,19 +374,19 @@ impl VikunjaAPI {
             },
             ..Default::default()
         };
-        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id as i32, task).await
+        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
     }
 
     pub async fn fav_task(
         &self,
-        task_id: isize,
+        task_id: i32,
         fav: bool,
     ) -> Result<ModelsTask, Error<TasksIdPostError>> {
         let task = ModelsTask {
             is_favorite: Some(fav),
             ..Default::default()
         };
-        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id as i32, task).await
+        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
     }
 
     pub async fn login(&self, username: &str, password: &str, totp: Option<String>) -> String {
@@ -409,7 +409,7 @@ impl VikunjaAPI {
         vikunjars::apis::user_api::users_get(&self.configuration, Some(search)).await
     }
 
-    pub async fn assign_to_task(&self, user: &str, task_id: isize) -> Result<(), String> {
+    pub async fn assign_to_task(&self, user: &str, task_id: i32) -> Result<(), String> {
         let user = self
             .search_user(user)
             .await
@@ -421,7 +421,7 @@ impl VikunjaAPI {
         };
         vikunjars::apis::assignees_api::tasks_task_id_assignees_put(
             &self.configuration,
-            task_id as i32,
+            task_id,
             assignee,
         )
         .await
@@ -430,12 +430,12 @@ impl VikunjaAPI {
         Ok(())
     }
 
-    pub async fn remove_assign_to_task(&self, user: &str, task_id: isize) {
+    pub async fn remove_assign_to_task(&self, user: &str, task_id: i32) {
         let user = self.search_user(user).await.unwrap();
         let user_id = user.first().unwrap().id.unwrap();
         vikunjars::apis::assignees_api::tasks_task_id_assignees_user_id_delete(
             &self.configuration,
-            task_id as i32,
+            task_id,
             user_id,
         )
         .await
@@ -444,24 +444,23 @@ impl VikunjaAPI {
 
     pub async fn get_task_comments(
         &self,
-        task_id: isize,
+        task_id: i32,
     ) -> Result<Vec<ModelsTaskComment>, vikunjars::apis::Error<TasksTaskIdCommentsGetError>> {
-        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id as i32)
-            .await
+        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id).await
     }
 
-    pub async fn remove_relation(&self, task_id: isize, relation: &Relation, other_task_id: isize) {
+    pub async fn remove_relation(&self, task_id: i32, relation: &Relation, other_task_id: i32) {
         let rel = ModelsTaskRelation {
-            other_task_id: Some(other_task_id as i32),
+            other_task_id: Some(other_task_id),
             relation_kind: Some(relation.model_rel()),
-            task_id: Some(task_id as i32),
+            task_id: Some(task_id),
             ..Default::default()
         };
         vikunjars::apis::task_api::tasks_task_id_relations_relation_kind_other_task_id_delete(
             &self.configuration,
-            task_id as i32,
+            task_id,
             &relation.api(),
-            other_task_id as i32,
+            other_task_id,
             rel,
         )
         .await
@@ -470,19 +469,19 @@ impl VikunjaAPI {
 
     pub async fn add_relation(
         &self,
-        task_id: isize,
+        task_id: i32,
         relation: &Relation,
-        other_task_id: isize,
+        other_task_id: i32,
     ) -> Result<ModelsTaskRelation, vikunjars::apis::Error<TasksTaskIdRelationsPutError>> {
         let relation = ModelsTaskRelation {
-            task_id: Some(task_id as i32),
-            other_task_id: Some(other_task_id as i32),
+            task_id: Some(task_id),
+            other_task_id: Some(other_task_id),
             relation_kind: Some(relation.model_rel()),
             ..Default::default()
         };
         vikunjars::apis::task_api::tasks_task_id_relations_put(
             &self.configuration,
-            task_id as i32,
+            task_id,
             relation,
         )
         .await
@@ -490,7 +489,7 @@ impl VikunjaAPI {
 
     pub async fn new_comment(
         &self,
-        task_id: isize,
+        task_id: i32,
         comment: String,
     ) -> Result<ModelsTaskComment, vikunjars::apis::Error<TasksTaskIdCommentsPutError>> {
         let relation = ModelsTaskComment {

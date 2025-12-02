@@ -1,152 +1,319 @@
-use clap::{arg, command};
+use argh::FromArgs;
 
-pub fn get_args() -> clap::ArgMatches {
-    command!()
-        .about("CLI Tool for Vikunja")
-        .arg(arg!(-d --done "Show done tasks too").required(false))
-        .arg(arg!(-f --favorite "Show only favorites").required(false))
-        .arg(arg!(--from <project> "Show only tasks from project").required(false))
-        .arg(arg!(-l --label <label> "Show only tasks with label").required(false))
-        .subcommand(
-            command!()
-                .name("info")
-                .about("Show information on task")
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("prj")
-                .about("Commands about projects")
-                .subcommand(command!().name("ls").about("List projects"))
-                .subcommand(
-                    command!()
-                        .name("add")
-                        .about("Create a new project")
-                        .arg(
-                            arg!(-c --color <color> "HEX Color Code for the project")
-                                .required(false),
-                        )
-                        .arg(
-                            arg!(-d --description <description> "Project description")
-                                .required(false),
-                        )
-                        .arg(arg!(-p --parent <parent> "Parent project").required(false))
-                        .arg(arg!(<title> "Project title").required(true)),
-                )
-                .subcommand(
-                    command!()
-                        .name("rm")
-                        .about("Remove a project")
-                        .arg(arg!(<project> "Project").required(true)),
-                ),
-        )
-        .subcommand(
-            command!()
-                .name("new")
-                .about("Create a new task")
-                .arg(arg!([title] "Task title").required(true))
-                .arg(
-                    arg!(-p --project <project> "Project to add task to")
-                        .required(false)
-                        .default_value("Inbox"),
-                )
-                .arg(arg!(-d --description <description> "Task Description").required(false))
-                .arg(arg!(--due <due> "Task Due").required(false))
-                .arg(arg!(-l --label <label> "Task Label").required(false))
-                .arg(arg!(--priority <priority> "Task Label").required(false))
-                .arg(arg!(-f --favorite "Mark task as favorite").required(false)),
-        )
-        .subcommand(
-            command!()
-                .name("login")
-                .about("Get a JWT Token for authentication")
-                .arg(arg!(-u --username <username> "Username").required(true))
-                .arg(arg!(-p --password <password> "Password").required(true))
-                .arg(arg!(--host <host> "Vikunja Host").required(true))
-                .arg(arg!(--totp <totp> "TOTP Code").required(false)),
-        )
-        .subcommand(
-            command!()
-                .name("assign")
-                .about("Assign a user to a task")
-                .arg(arg!(-u --undo "Remove user from task").required(false))
-                .arg(arg!([user] "User").required(true))
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("comments")
-                .about("Show task comments")
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("comment")
-                .about("Comment on a task")
-                .arg(arg!([task_id] "Task ID").required(true))
-                .arg(arg!([comment] "Comment").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("relation")
-                .about("Set task relations")
-                .arg(arg!(-d --delete "Delete the relation").required(false))
-                .arg(arg!([task_id] "Task ID").required(true))
-                .arg(arg!([relation] "Relation").required(true))
-                .arg(arg!([second_task_id] "Other Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("fav")
-                .about("Favorite a task")
-                .arg(arg!(-u --undo "Remove favorite from task").required(false))
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("label")
-                .about("Add a label to a task")
-                .arg(arg!(-u --undo "Remove label from task").required(false))
-                .arg(arg!([label] "Label").required(true))
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("labels")
-                .about("Manage labels")
-                .subcommand(command!().name("ls").about("List all labels"))
-                .subcommand(
-                    command!()
-                        .name("new")
-                        .about("Create a new label")
-                        .arg(
-                            arg!(-c --color <color> "HEX Color Code for the label").required(false),
-                        )
-                        .arg(
-                            arg!(-d --description <description> "Description for the label")
-                                .required(false),
-                        )
-                        .arg(arg!(<title> "Label title").required(true)),
-                )
-                .subcommand(
-                    command!()
-                        .name("rm")
-                        .about("Remove a label")
-                        .arg(arg!(<title> "Label title").required(true)),
-                ),
-        )
-        .subcommand(
-            command!()
-                .name("done")
-                .arg(arg!(-u --undo "Undo completing the task").required(false))
-                .about("Mark task as done")
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .subcommand(
-            command!()
-                .name("rm")
-                .about("Remove task")
-                .arg(arg!([task_id] "Task ID").required(true)),
-        )
-        .get_matches()
+#[derive(FromArgs, PartialEq, Debug)]
+/// CLI Tool for Vikunja
+pub struct VkCLI {
+    #[argh(switch, short = 'd')]
+    /// show done tasks too
+    pub done: bool,
+
+    #[argh(switch, short = 'f')]
+    /// show only favorites
+    pub favorite: bool,
+
+    #[argh(option)]
+    /// show only tasks from this project
+    pub from: Option<String>,
+
+    #[argh(option, short = 'l')]
+    /// show only tasks with label
+    pub label: Option<String>,
+
+    #[argh(subcommand)]
+    pub cmd: Option<VkCommands>,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+pub enum VkCommands {
+    TaskInfo(TaskInfoCmd),
+    TaskRemove(TaskRemoveCmd),
+    TaskDone(TaskDoneCmd),
+    TaskNew(TaskNewCmd),
+    TaskAssign(TaskAssignCmd),
+    TaskComments(TaskCommentsCmd),
+    TaskComment(TaskCommentCmd),
+    TaskRelation(TaskRelationCmd),
+    TaskLabel(TaskLabelCmd),
+    TaskFav(TaskFavCmd),
+    Login(LoginCmd),
+    ProjectCmds(ProjectCmds),
+    Labels(LabelCmds),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Show information on task
+#[argh(subcommand, name = "info")]
+pub struct TaskInfoCmd {
+    #[argh(positional)]
+    /// task id
+    pub task_id: i32,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Delete a task
+#[argh(subcommand, name = "rm")]
+pub struct TaskRemoveCmd {
+    #[argh(option)]
+    /// task id
+    pub task_id: i32,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Mark task as done
+#[argh(subcommand, name = "done")]
+pub struct TaskDoneCmd {
+    #[argh(switch, short = 'u')]
+    /// ndo completing the task
+    pub undo: bool,
+
+    #[argh(positional)]
+    /// task id
+    pub task_id: i32,
+}
+
+/// Create a new task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "new")]
+pub struct TaskNewCmd {
+    /// task title
+    #[argh(positional)]
+    pub title: String,
+
+    /// project to add task to
+    #[argh(option, default = "String::from(\"Inbox\")")]
+    pub project: String,
+
+    /// task description
+    #[argh(option)]
+    pub description: Option<String>,
+
+    /// task due
+    #[argh(option)]
+    pub due: Option<String>,
+
+    /// task label
+    #[argh(option)]
+    pub label: Option<String>,
+
+    /// task priority
+    #[argh(option)]
+    pub priority: Option<String>,
+
+    /// mark task as favorite
+    #[argh(switch)]
+    pub favorite: bool,
+}
+
+/// Get a JWT Token for authentication
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "login")]
+pub struct LoginCmd {
+    /// username
+    #[argh(option)]
+    pub username: String,
+
+    /// password
+    #[argh(option)]
+    pub password: String,
+
+    /// vikunja host
+    #[argh(option)]
+    pub host: String,
+
+    /// TOTP code
+    #[argh(option)]
+    pub totp: Option<String>,
+}
+
+/// Assign a user to a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "assign")]
+pub struct TaskAssignCmd {
+    /// remove user from task
+    #[argh(switch)]
+    pub undo: bool,
+
+    /// user
+    #[argh(positional)]
+    pub user: String,
+
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+}
+
+/// Show task comments
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "comments")]
+pub struct TaskCommentsCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+}
+
+/// Comment on a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "comment")]
+pub struct TaskCommentCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+
+    /// comment
+    #[argh(positional)]
+    pub comment: String,
+}
+
+/// Set task relations
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "relation")]
+pub struct TaskRelationCmd {
+    /// delete the relation
+    #[argh(switch)]
+    pub delete: bool,
+
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+
+    /// relation
+    #[argh(positional)]
+    pub relation: String,
+
+    /// other task ID
+    #[argh(positional)]
+    pub second_task_id: i32,
+}
+
+/// Favorite a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "fav")]
+pub struct TaskFavCmd {
+    /// remove favorite from task
+    #[argh(switch)]
+    pub undo: bool,
+
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+}
+
+/// Add a label to a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "label")]
+pub struct TaskLabelCmd {
+    /// remove label from task
+    #[argh(switch)]
+    pub undo: bool,
+
+    /// label
+    #[argh(positional)]
+    pub label: String,
+
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "prj")]
+/// Commands for projects
+pub struct ProjectCmds {
+    #[argh(subcommand)]
+    pub cmd: ProjectCommands,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+pub enum ProjectCommands {
+    List(ProjectListCmd),
+    Add(ProjectAddCmd),
+    Remove(ProjectRemoveCmd),
+}
+
+/// List projects
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "ls")]
+pub struct ProjectListCmd {}
+
+/// Create a new project
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "add")]
+pub struct ProjectAddCmd {
+    /// HEX color code for the project
+    #[argh(option)]
+    pub color: Option<String>,
+
+    /// project description
+    #[argh(option)]
+    pub description: Option<String>,
+
+    /// parent project
+    #[argh(option)]
+    pub parent: Option<String>,
+
+    /// project title
+    #[argh(positional)]
+    pub title: String,
+}
+
+/// Remove a project
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "rm")]
+pub struct ProjectRemoveCmd {
+    /// project
+    #[argh(positional)]
+    pub project: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "labels")]
+/// Commands for labels
+pub struct LabelCmds {
+    #[argh(subcommand)]
+    pub cmd: LabelCommands,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+pub enum LabelCommands {
+    List(LabelListCmd),
+    New(LabelNewCmd),
+    Remove(LabelRemoveCmd),
+}
+
+/// List all labels
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "ls")]
+pub struct LabelListCmd {}
+
+/// Create a new label
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "new")]
+pub struct LabelNewCmd {
+    /// HEX color code for the label
+    #[argh(option)]
+    pub color: Option<String>,
+
+    /// description for the label
+    #[argh(option)]
+    pub description: Option<String>,
+
+    /// label title
+    #[argh(positional)]
+    pub title: String,
+}
+
+/// Remove a label
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "rm")]
+pub struct LabelRemoveCmd {
+    /// label title
+    #[argh(positional)]
+    pub title: String,
+}
+
+pub fn get_args() -> VkCLI {
+    argh::from_env()
 }
