@@ -1,59 +1,4 @@
-use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
-
-use super::{Label, User};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Task {
-    pub id: isize,
-    pub title: String,
-    pub description: String,
-    pub done: bool,
-    pub done_at: String,
-    pub due_date: String,
-    pub reminders: Option<String>,
-    pub project_id: isize,
-    pub repeat_after: usize,
-    pub repeat_mode: usize,
-    pub priority: usize,
-    pub start_date: String,
-    pub end_date: String,
-    pub assignees: Option<Vec<User>>,
-    pub labels: Option<Vec<Label>>,
-    pub hex_color: String,
-    pub percent_done: f64,
-    pub identifier: String,
-    pub index: usize,
-    pub related_tasks: Option<HashMap<String, Vec<Task>>>,
-    // pub attachments
-    pub cover_image_attachment_id: usize,
-    pub is_favorite: bool,
-    pub created: String,
-    pub updated: String,
-    pub bucket_id: usize,
-    pub position: f64,
-    pub kanban_position: Option<f64>,
-    pub created_by: Option<User>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Comment {
-    pub id: isize,
-    pub author: User,
-    pub comment: String,
-    pub created: String,
-    pub updated: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskRelation {
-    pub created: String,
-    pub created_by: User,
-    pub other_task_id: isize,
-    pub task_id: isize,
-    pub relation_kind: String,
-}
+use vikunjars::models::ModelsRelationKind;
 
 pub enum Relation {
     Unknown,
@@ -71,6 +16,23 @@ pub enum Relation {
 }
 
 impl Relation {
+    pub fn model_rel(&self) -> ModelsRelationKind {
+        match self {
+            Relation::Unknown => ModelsRelationKind::RelationKindUnknown,
+            Relation::Subtask => ModelsRelationKind::RelationKindSubtask,
+            Relation::ParentTask => ModelsRelationKind::RelationKindParenttask,
+            Relation::Related => ModelsRelationKind::RelationKindRelated,
+            Relation::DuplicateOf => ModelsRelationKind::RelationKindDuplicateOf,
+            Relation::Duplicates => ModelsRelationKind::RelationKindDuplicates,
+            Relation::Blocking => ModelsRelationKind::RelationKindBlocking,
+            Relation::Blocked => ModelsRelationKind::RelationKindBlocked,
+            Relation::Precedes => ModelsRelationKind::RelationKindPreceeds,
+            Relation::Follows => ModelsRelationKind::RelationKindFollows,
+            Relation::CopiedFrom => ModelsRelationKind::RelationKindCopiedFrom,
+            Relation::CopiedTo => ModelsRelationKind::RelationKindCopiedTo,
+        }
+    }
+
     pub fn try_parse(val: &str) -> Option<Self> {
         match val {
             "unknown" => Some(Self::Unknown),

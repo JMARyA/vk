@@ -5,8 +5,9 @@ use crossterm::{
     style::{Color, SetBackgroundColor, SetForegroundColor},
     ExecutableCommand,
 };
+use vikunjars::models::ModelsLabel;
 
-use crate::api::{Label, VikunjaAPI};
+use crate::api::VikunjaAPI;
 
 pub mod project;
 pub mod task;
@@ -88,13 +89,13 @@ fn is_in_past(dt: DateTime<Utc>) -> bool {
     dt < Utc::now()
 }
 
-fn print_label(label: &Label) {
-    let color = hex_to_color(&label.hex_color).unwrap_or(Color::Reset);
-    print_color_bg(color, label.title.trim());
+fn print_label(label: &ModelsLabel) {
+    let color = hex_to_color(&label.hex_color.as_ref().unwrap()).unwrap_or(Color::Reset);
+    print_color_bg(color, label.title.as_ref().unwrap().trim());
 }
 
-pub fn print_all_labels(api: &VikunjaAPI) {
-    let labels = api.get_all_labels();
+pub async fn print_all_labels(api: &VikunjaAPI) {
+    let labels = api.get_all_labels().await;
 
     for label in labels {
         print_label(&label);

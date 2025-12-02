@@ -1,15 +1,32 @@
 use serde::{Deserialize, Serialize};
 
-mod project;
 mod task;
 
-pub use project::Project;
-pub use task::Comment;
 pub use task::Relation;
-pub use task::Task;
 
 use moka::sync::Cache;
-use task::TaskRelation;
+use vikunjars::apis::configuration::ApiKey;
+use vikunjars::apis::configuration::Configuration;
+use vikunjars::apis::labels_api::LabelsPutError;
+use vikunjars::apis::labels_api::TasksTaskLabelsPutError;
+use vikunjars::apis::project_api::ProjectsGetError;
+use vikunjars::apis::project_api::ProjectsIdGetError;
+use vikunjars::apis::project_api::ProjectsPutError;
+use vikunjars::apis::task_api::TasksAllGetError;
+use vikunjars::apis::task_api::TasksIdGetError;
+use vikunjars::apis::task_api::TasksIdPostError;
+use vikunjars::apis::task_api::TasksTaskIdCommentsGetError;
+use vikunjars::apis::task_api::TasksTaskIdCommentsPutError;
+use vikunjars::apis::task_api::TasksTaskIdRelationsPutError;
+use vikunjars::apis::user_api::UsersGetError;
+use vikunjars::apis::Error;
+use vikunjars::models::ModelsLabel;
+use vikunjars::models::ModelsLabelTask;
+use vikunjars::models::ModelsProject;
+use vikunjars::models::ModelsTask;
+use vikunjars::models::ModelsTaskComment;
+use vikunjars::models::ModelsTaskRelation;
+use vikunjars::models::UserUser;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VikunjaError {
@@ -39,18 +56,20 @@ pub struct User {
     pub updated: String,
 }
 
-pub fn get_all_items<F, T>(mut get_page: F) -> Vec<T>
+pub async fn get_all_items<F, T, E>(mut get_page: F) -> Vec<T>
 where
-    F: FnMut(usize) -> Vec<T>,
+    F: AsyncFnMut(usize) -> Result<Vec<T>, E>,
 {
     let mut ret = Vec::new();
     let mut page = 1;
     loop {
-        let current_page = get_page(page);
-        if current_page.is_empty() {
-            break;
+        let current_page = get_page(page).await;
+        if let Ok(current_page) = current_page {
+            if current_page.is_empty() {
+                break;
+            }
+            ret.extend(current_page);
         }
-        ret.extend(current_page);
         page += 1;
     }
     ret
@@ -59,7 +78,7 @@ where
 pub struct ProjectID(pub isize);
 
 impl ProjectID {
-    pub fn parse(api: &VikunjaAPI, project: &str) -> Option<Self> {
+    pub async fn parse(api: &VikunjaAPI, project: &str) -> Option<Self> {
         let project = project.trim_start_matches('#');
 
         if let Ok(num) = project.parse() {
@@ -67,220 +86,239 @@ impl ProjectID {
         } else {
             Some(Self(
                 api.get_all_projects()
+                    .await
+                    .unwrap()
                     .into_iter()
-                    .find(|x| x.title.to_lowercase().contains(&project.to_lowercase()))?
-                    .id,
+                    .find(|x| {
+                        x.title
+                            .as_ref()
+                            .unwrap()
+                            .to_lowercase()
+                            .contains(&project.to_lowercase())
+                    })?
+                    .id
+                    .unwrap() as isize,
             ))
         }
     }
 }
 
 pub struct VikunjaAPI {
-    host: String,
-    token: String,
     cache: Cache<String, String>,
+    configuration: vikunjars::apis::configuration::Configuration,
 }
 
 impl VikunjaAPI {
     pub fn new(host: &str, token: &str) -> Self {
+        let base_path = format!("{host}/api/v1");
         Self {
-            host: host.to_string(),
-            token: token.to_string(),
             cache: Cache::new(100),
-        }
-    }
-
-    fn get_request(&self, path: &str) -> String {
-        self.cache.get(path).map_or_else(
-            || {
-                let client = reqwest::blocking::Client::new();
-
-                let ret = client
-                    .get(format!("{}/api/v1{}", self.host, path))
-                    .header("Authorization", format!("Bearer {}", self.token))
-                    .send()
-                    .unwrap()
-                    .text()
-                    .unwrap();
-
-                self.cache.insert(path.to_string(), ret.clone());
-                ret
+            configuration: Configuration {
+                base_path,
+                user_agent: Some(format!("vk-{}", env!("CARGO_PKG_VERSION"))),
+                client: reqwest::Client::new(),
+                basic_auth: None,
+                oauth_access_token: None,
+                bearer_access_token: None,
+                api_key: Some(ApiKey {
+                    prefix: Some("Bearer".to_string()),
+                    key: token.to_string(),
+                }),
             },
-            |cached| cached,
-        )
-    }
-
-    fn put_request(&self, path: &str, data: &serde_json::Value) -> String {
-        let client = reqwest::blocking::Client::new();
-
-        client
-            .put(format!("{}/api/v1{}", self.host, path))
-            .header("Authorization", format!("Bearer {}", self.token))
-            .json(&data)
-            .send()
-            .unwrap()
-            .text()
-            .unwrap()
-    }
-
-    fn post_request(&self, path: &str, data: &serde_json::Value) -> String {
-        let client = reqwest::blocking::Client::new();
-
-        client
-            .post(format!("{}/api/v1{}", self.host, path))
-            .header("Authorization", format!("Bearer {}", self.token))
-            .json(&data)
-            .send()
-            .unwrap()
-            .text()
-            .unwrap()
-    }
-
-    fn delete_request(&self, path: &str) -> String {
-        let client = reqwest::blocking::Client::new();
-
-        client
-            .delete(format!("{}/api/v1{}", self.host, path))
-            .header("Authorization", format!("Bearer {}", self.token))
-            .send()
-            .unwrap()
-            .text()
-            .unwrap()
+        }
     }
 
     // projects
 
-    pub fn get_project_name_from_id(&self, id: isize) -> String {
-        let all_prj = self.get_all_projects();
+    pub async fn get_project_name_from_id(&self, id: isize) -> String {
+        let all_prj = self.get_all_projects().await.unwrap();
 
-        let found = all_prj.into_iter().find(|x| x.id == id).unwrap();
+        let found = all_prj
+            .into_iter()
+            .find(|x| x.id.unwrap() == id as i32)
+            .unwrap();
 
-        found.title
+        found.title.unwrap()
     }
 
-    pub fn get_all_projects(&self) -> Vec<Project> {
-        let resp = self.get_request("/projects");
-        serde_json::from_str(&resp).unwrap()
+    pub async fn get_all_projects(
+        &self,
+    ) -> Result<Vec<vikunjars::models::ModelsProject>, Error<ProjectsGetError>> {
+        vikunjars::apis::project_api::projects_get(&self.configuration, None, None, None, None)
+            .await
     }
 
-    pub fn delete_project(&self, project_id: &ProjectID) {
-        self.delete_request(&format!("/projects/{}", project_id.0));
+    pub async fn delete_project(&self, project_id: &ProjectID) {
+        vikunjars::apis::project_api::projects_id_delete(&self.configuration, project_id.0 as i32)
+            .await
+            .unwrap();
     }
 
-    pub fn new_project(
+    pub async fn new_project(
         &self,
         title: &str,
-        description: Option<&str>,
-        color: Option<&str>,
+        description: Option<String>,
+        color: Option<String>,
         parent: Option<ProjectID>,
-    ) -> Project {
-        let data = serde_json::json!({
-            "description": description,
-            "hex_color": color,
-            "parent_project_id": parent.map(|x| x.0),
-            "title": title
-        });
+    ) -> Result<ModelsProject, vikunjars::apis::Error<ProjectsPutError>> {
+        let mut data = ModelsProject::default();
 
-        let resp = self.put_request("/projects", &data);
-        serde_json::from_str(&resp).unwrap()
+        data.description = description;
+        data.hex_color = color;
+        data.parent_project_id = parent.map(|x| x.0 as i32);
+        data.title = Some(title.to_string());
+
+        vikunjars::apis::project_api::projects_put(&self.configuration, data).await
     }
 
-    pub fn get_project(&self, project: &ProjectID) -> Project {
-        let resp = self.get_request(&format!("/projects/{}", project.0));
-        serde_json::from_str(&resp).unwrap()
+    pub async fn get_project(
+        &self,
+        project: &ProjectID,
+    ) -> Result<ModelsProject, vikunjars::apis::Error<ProjectsIdGetError>> {
+        vikunjars::apis::project_api::projects_id_get(&self.configuration, project.0 as i32).await
     }
 
     // labels
-    pub fn get_all_labels(&self) -> Vec<Label> {
-        get_all_items(|x| {
-            let resp = self.get_request(&format!("/labels?page={x}"));
-            if resp.trim() == "null" {
-                return Vec::new();
-            }
-            serde_json::from_str(&resp).unwrap()
+    pub async fn get_all_labels(&self) -> Vec<ModelsLabel> {
+        get_all_items(async |x| {
+            vikunjars::apis::labels_api::labels_get(&self.configuration, Some(x as i32), None, None)
+                .await
         })
+        .await
     }
 
-    pub fn new_label(&self, title: &str, description: Option<&str>, color: Option<&str>) -> Label {
-        let resp = self.put_request(
-            "/labels",
-            &serde_json::json!({
-                "title": title,
-                "description": description,
-                "hex_color": color
-            }),
-        );
-        serde_json::from_str(&resp).unwrap()
+    pub async fn new_label(
+        &self,
+        title: &str,
+        description: Option<String>,
+        color: Option<String>,
+    ) -> Result<ModelsLabel, vikunjars::apis::Error<LabelsPutError>> {
+        let label = ModelsLabel {
+            title: Some(title.to_string()),
+            description: description,
+            hex_color: color,
+            ..Default::default()
+        };
+        vikunjars::apis::labels_api::labels_put(&self.configuration, label).await
     }
 
-    pub fn remove_label(&self, title: &str) {
+    pub async fn remove_label(&self, title: &str) {
         let labels = self.get_all_labels();
 
         let label_id = labels
+            .await
             .into_iter()
-            .find(|x| x.title.trim() == title)
+            .find(|x| x.title.as_ref().unwrap().trim() == title)
             .unwrap()
-            .id;
+            .id
+            .unwrap();
 
-        self.delete_request(&format!("/labels/{label_id}"));
+        vikunjars::apis::labels_api::labels_id_delete(&self.configuration, label_id)
+            .await
+            .unwrap();
     }
 
-    pub fn label_task_remove(&self, label: &str, task_id: isize) {
-        let labels = self.get_all_labels();
+    pub async fn label_task_remove(&self, label: &str, task_id: isize) {
+        let labels = self.get_all_labels().await;
 
         let label_id = labels
             .into_iter()
-            .find(|x| x.title.trim() == label)
+            .find(|x| x.title.as_ref().unwrap().trim() == label)
             .unwrap()
-            .id;
+            .id
+            .unwrap();
 
-        self.delete_request(&format!("/tasks/{task_id}/labels/{label_id}"));
+        vikunjars::apis::labels_api::tasks_task_labels_label_delete(
+            &self.configuration,
+            task_id as i32,
+            label_id,
+        )
+        .await
+        .unwrap();
     }
 
-    pub fn label_task(&self, label: &str, task_id: isize) -> Result<(), String> {
-        let labels = self.get_all_labels();
+    pub async fn label_task(
+        &self,
+        label: &str,
+        task_id: isize,
+    ) -> Result<ModelsLabelTask, vikunjars::apis::Error<TasksTaskLabelsPutError>> {
+        let labels = self.get_all_labels().await;
 
         let label_id = labels
             .into_iter()
-            .find(|x| x.title.trim() == label)
-            .map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?
-            .id;
+            .find(|x| x.title.as_ref().unwrap().trim() == label)
+            .unwrap()
+            //.map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?
+            .id
+            .unwrap();
 
-        self.put_request(
-            &format!("/tasks/{task_id}/labels"),
-            &serde_json::json!({
-                "label_id": label_id
-            }),
-        );
-
-        Ok(())
+        vikunjars::apis::labels_api::tasks_task_labels_put(
+            &self.configuration,
+            task_id as i32,
+            ModelsLabelTask {
+                label_id: Some(label_id),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     // tasks
-    pub fn get_task_page(&self, page: usize) -> Vec<Task> {
-        let resp = self.get_request(&format!("/tasks/all?page={page}"));
-        serde_json::from_str(&resp).unwrap()
+    pub async fn get_task_page(
+        &self,
+        page: usize,
+    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksAllGetError>> {
+        vikunjars::apis::task_api::tasks_all_get(
+            &self.configuration,
+            Some(page as i32),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
-    pub fn get_all_tasks(&self) -> Vec<Task> {
-        get_all_items(|x| self.get_task_page(x))
+    pub async fn get_all_tasks(&self) -> Vec<ModelsTask> {
+        get_all_items(async |x| self.get_task_page(x).await).await
     }
 
-    pub fn get_latest_tasks(&self) -> Vec<Task> {
-        let resp = self.get_request("/tasks/all?per_page=60&sort_by=created&order_by=desc");
-        serde_json::from_str(&resp).unwrap()
+    pub async fn get_latest_tasks(
+        &self,
+    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksAllGetError>> {
+        vikunjars::apis::task_api::tasks_all_get(
+            &self.configuration,
+            None,
+            Some(25),
+            None,
+            Some("created"),
+            Some("desc"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
-    pub fn get_task(&self, id: isize) -> Result<Task, ()> {
-        let resp = self.get_request(&format!("/tasks/{id}"));
-        serde_json::from_str(&resp).map_or(Err(()), Ok)
+    pub async fn get_task(
+        &self,
+        id: i32,
+    ) -> Result<ModelsTask, vikunjars::apis::Error<TasksIdGetError>> {
+        vikunjars::apis::task_api::tasks_id_get(&self.configuration, id).await
     }
 
-    pub fn delete_task(&self, id: isize) {
-        self.delete_request(&format!("/tasks/{id}"));
+    pub async fn delete_task(&self, id: isize) {
+        vikunjars::apis::task_api::tasks_id_delete(&self.configuration, id as i32)
+            .await
+            .unwrap();
     }
 
-    pub fn new_task(
+    pub async fn new_task(
         &self,
         title: &str,
         project: &ProjectID,
@@ -288,139 +326,182 @@ impl VikunjaAPI {
         due_date: Option<String>,
         fav: bool,
         label: Option<String>,
-        priority: Option<isize>,
-    ) -> Result<Task, String> {
+        priority: Option<i32>,
+    ) -> Result<ModelsTask, String> {
         let id = project.0;
 
         let labels = if let Some(label) = label {
             let label = self
                 .get_all_labels()
+                .await
                 .into_iter()
-                .find(|x| x.title.trim() == label)
+                .find(|x| x.title.as_ref().unwrap().trim() == label)
                 .map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?;
             vec![label]
         } else {
             vec![]
         };
 
-        let data = serde_json::json!({
-            "title": title,
-            "description": description,
-            "due_date": due_date,
-            "is_favorite": fav,
-            "priority": priority,
-            "labels": labels
-        });
+        let data = ModelsTask {
+            title: Some(title.to_string()),
+            description: description,
+            due_date: due_date,
+            is_favorite: Some(fav),
+            priority: priority,
+            labels: Some(labels),
+            ..Default::default()
+        };
 
-        let resp = self.put_request(&format!("/projects/{id}/tasks"), &data);
-        Ok(serde_json::from_str(&resp).unwrap())
+        let ret =
+            vikunjars::apis::task_api::projects_id_tasks_put(&self.configuration, id as i32, data)
+                .await
+                .map_err(|e| format!("API Error: {e}"))?;
+
+        Ok(ret)
     }
 
-    pub fn done_task(&self, task_id: isize, done: bool) -> Option<Task> {
-        let resp = self.post_request(
-            &format!("/tasks/{task_id}"),
-            &serde_json::json!({
-                "done": done,
-                "done_at": if done { Some(chrono::Utc::now().to_rfc3339()) } else { None }
-            }),
-        );
-        serde_json::from_str(&resp).ok()
+    pub async fn done_task(
+        &self,
+        task_id: isize,
+        done: bool,
+    ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let task = ModelsTask {
+            done: Some(done),
+            done_at: if done {
+                Some(chrono::Utc::now().to_rfc3339())
+            } else {
+                None
+            },
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id as i32, task).await
     }
 
-    pub fn fav_task(&self, task_id: isize, fav: bool) -> Option<Task> {
-        let resp = self.post_request(
-            &format!("/tasks/{task_id}"),
-            &serde_json::json!({
-                "is_favorite": fav
-            }),
-        );
-
-        serde_json::from_str(&resp).ok()
+    pub async fn fav_task(
+        &self,
+        task_id: isize,
+        fav: bool,
+    ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let task = ModelsTask {
+            is_favorite: Some(fav),
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id as i32, task).await
     }
 
-    pub fn login(&self, username: &str, password: &str, totp: Option<&str>) -> String {
-        let resp = self.post_request(
-            "/login",
-            &serde_json::json!({
-                "long_token": true,
-                "username": username,
-                "password": password,
-                "totp_passcode": totp
-            }),
-        );
-
-        let val: serde_json::Value = serde_json::from_str(&resp).unwrap();
-        val.as_object()
-            .unwrap()
-            .get("token")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string()
+    pub async fn login(&self, username: &str, password: &str, totp: Option<String>) -> String {
+        let credentials = vikunjars::models::UserLogin {
+            long_token: Some(true),
+            password: Some(password.to_string()),
+            totp_passcode: totp,
+            username: Some(username.to_string()),
+        };
+        let ret = vikunjars::apis::auth_api::login_post(&self.configuration, credentials)
+            .await
+            .unwrap();
+        ret.token.unwrap()
     }
 
-    pub fn search_user(&self, search: &str) -> Option<Vec<User>> {
-        let resp = self.get_request(&format!("/users?s={search}"));
-        serde_json::from_str(&resp).ok()
+    pub async fn search_user(
+        &self,
+        search: &str,
+    ) -> Result<Vec<UserUser>, vikunjars::apis::Error<UsersGetError>> {
+        vikunjars::apis::user_api::users_get(&self.configuration, Some(search)).await
     }
 
-    pub fn assign_to_task(&self, user: &str, task_id: isize) -> Result<(), String> {
+    pub async fn assign_to_task(&self, user: &str, task_id: isize) -> Result<(), String> {
         let user = self
             .search_user(user)
-            .map_or_else(|| Err(String::from("User not found")), Ok)?;
+            .await
+            .map_err(|_| String::from("User not found"))?;
 
-        self.put_request(
-            &format!("/tasks/{task_id}/assignees"),
-            &serde_json::json!({
-                "user_id": user.first().unwrap().id
-            }),
-        );
+        let assignee = vikunjars::models::ModelsTaskAssginee {
+            user_id: Some(user.first().unwrap().id.unwrap()),
+            ..Default::default()
+        };
+        vikunjars::apis::assignees_api::tasks_task_id_assignees_put(
+            &self.configuration,
+            task_id as i32,
+            assignee,
+        )
+        .await
+        .map_err(|e| format!("API Error: {e}"))?;
 
         Ok(())
     }
 
-    pub fn remove_assign_to_task(&self, user: &str, task_id: isize) {
-        let user = self.search_user(user).unwrap();
-        let user_id = user.first().unwrap().id;
-        self.delete_request(&format!("/tasks/{task_id}/assignees/{user_id}"));
+    pub async fn remove_assign_to_task(&self, user: &str, task_id: isize) {
+        let user = self.search_user(user).await.unwrap();
+        let user_id = user.first().unwrap().id.unwrap();
+        vikunjars::apis::assignees_api::tasks_task_id_assignees_user_id_delete(
+            &self.configuration,
+            task_id as i32,
+            user_id,
+        )
+        .await
+        .unwrap();
     }
 
-    pub fn get_task_comments(&self, task_id: isize) -> Vec<Comment> {
-        let resp = self.get_request(&format!("/tasks/{task_id}/comments"));
-        serde_json::from_str(&resp).unwrap()
+    pub async fn get_task_comments(
+        &self,
+        task_id: isize,
+    ) -> Result<Vec<ModelsTaskComment>, vikunjars::apis::Error<TasksTaskIdCommentsGetError>> {
+        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id as i32)
+            .await
     }
 
-    pub fn remove_relation(&self, task_id: isize, relation: &Relation, other_task_id: isize) {
-        self.delete_request(&format!(
-            "/tasks/{task_id}/relations/{}/{other_task_id}",
-            relation.api()
-        ));
+    pub async fn remove_relation(&self, task_id: isize, relation: &Relation, other_task_id: isize) {
+        let rel = ModelsTaskRelation {
+            other_task_id: Some(other_task_id as i32),
+            relation_kind: Some(relation.model_rel()),
+            task_id: Some(task_id as i32),
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_task_id_relations_relation_kind_other_task_id_delete(
+            &self.configuration,
+            task_id as i32,
+            &relation.api(),
+            other_task_id as i32,
+            rel,
+        )
+        .await
+        .unwrap();
     }
 
-    pub fn add_relation(
+    pub async fn add_relation(
         &self,
         task_id: isize,
         relation: &Relation,
         other_task_id: isize,
-    ) -> TaskRelation {
-        let resp = self.put_request(
-            &format!("/tasks/{task_id}/relations"),
-            &serde_json::json!({
-                "task_id": task_id,
-                "other_task_id": other_task_id,
-                "relation_kind": relation.api()
-            }),
-        );
-        serde_json::from_str(&resp).unwrap()
+    ) -> Result<ModelsTaskRelation, vikunjars::apis::Error<TasksTaskIdRelationsPutError>> {
+        let relation = ModelsTaskRelation {
+            task_id: Some(task_id as i32),
+            other_task_id: Some(other_task_id as i32),
+            relation_kind: Some(relation.model_rel()),
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_task_id_relations_put(
+            &self.configuration,
+            task_id as i32,
+            relation,
+        )
+        .await
     }
 
-    pub fn new_comment(&self, task_id: isize, comment: &str) -> Comment {
-        let resp = self.put_request(
-            &format!("/tasks/{task_id}/comments"),
-            &serde_json::json!({
-                "comment": comment
-            }),
-        );
-        serde_json::from_str(&resp).unwrap()
+    pub async fn new_comment(
+        &self,
+        task_id: isize,
+        comment: String,
+    ) -> Result<ModelsTaskComment, vikunjars::apis::Error<TasksTaskIdCommentsPutError>> {
+        let relation = ModelsTaskComment {
+            comment: Some(comment),
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_task_id_comments_put(
+            &self.configuration,
+            task_id as i32,
+            relation,
+        )
+        .await
     }
 }
