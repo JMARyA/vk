@@ -159,7 +159,25 @@ async fn main() {
     if let Some(subcommand) = arg.cmd {
         match subcommand {
             VkCommands::TaskInfo(task_info_cmd) => {
-                ui::task::print_task_info(task_info_cmd.task_id, &api).await;
+                if !task_info_cmd.json {
+                    ui::task::print_task_info(task_info_cmd.task_id, &api).await;
+                    return;
+                }
+
+                // json
+                let task = api
+                    .get_task(task_info_cmd.task_id)
+                    .await
+                    .unwrap_or_else(|_| {
+                        print_color(
+                            crossterm::style::Color::Red,
+                            &format!("Could not get task #{}", task_info_cmd.task_id),
+                        );
+                        println!();
+                        std::process::exit(1);
+                    });
+
+                println!("{}", serde_json::to_string(&task).unwrap());
             }
             VkCommands::TaskRemove(task_remove_cmd) => {
                 api.delete_task(task_remove_cmd.task_id).await;

@@ -45,6 +45,10 @@ pub enum VkCommands {
 /// Show information on task
 #[argh(subcommand, name = "info")]
 pub struct TaskInfoCmd {
+    #[argh(switch, short = 'j')]
+    /// output in json
+    pub json: bool,
+
     #[argh(positional)]
     /// task id
     pub task_id: i32,
