@@ -54,7 +54,7 @@ pub struct TaskInfoCmd {
 /// Delete a task
 #[argh(subcommand, name = "rm")]
 pub struct TaskRemoveCmd {
-    #[argh(option)]
+    #[argh(positional)]
     /// task id
     pub task_id: i32,
 }
