@@ -69,6 +69,8 @@ where
                 break;
             }
             ret.extend(current_page);
+        } else {
+            break;
         }
         page += 1;
     }
