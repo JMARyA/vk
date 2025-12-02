@@ -1,0 +1,23 @@
+from_latest_tag = true
+disable_changelog = true
+
+ignore_merge_commits = false
+ignore_fixup_commits = true
+
+disable_bump_commit = false
+
+branch_whitelist = ["main"]
+skip_ci = "[skip ci]"
+skip_untracked = false
+
+tag_prefix = "v"
+
+pre_bump_hooks = [
+  "sh .hooks/pre-bump {{version}}"
+]
+post_bump_hooks = [
+  "sh .hooks/post-bump {{version}} {{version_tag}}",
+]
+
+[git_hooks.pre-commit]
+script = ".hooks/pre-commit"

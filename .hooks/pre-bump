@@ -1,0 +1,2 @@
+cargo build --release
+cargo set-version $1
