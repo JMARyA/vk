@@ -46,7 +46,13 @@ pub enum VkCommands {
     Login(LoginCmd),
     ProjectCmds(ProjectCmds),
     Labels(LabelCmds),
+    Sync(SyncCmd),
 }
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Sync vikunja tasks to a local folder
+#[argh(subcommand, name = "sync")]
+pub struct SyncCmd {}
 
 #[derive(FromArgs, PartialEq, Debug)]
 /// Show information on task

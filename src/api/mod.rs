@@ -289,6 +289,33 @@ impl VikunjaAPI {
         get_all_items(async |x| self.get_task_page(x).await).await
     }
 
+    pub async fn get_all_tasks_from_project(&self, prj: i32) -> Option<Vec<ModelsTask>> {
+        let views =
+            vikunjars::apis::project_api::projects_project_views_get(&self.configuration, prj)
+                .await
+                .unwrap();
+
+        let view = views.first()?;
+        let tasks = vikunjars::apis::task_api::projects_id_views_view_tasks_get(
+            &self.configuration,
+            prj,
+            view.id.unwrap(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        Some(tasks)
+    }
+
     pub async fn get_latest_tasks(
         &self,
     ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksGetError>> {

@@ -2,6 +2,7 @@ mod api;
 mod args;
 mod config;
 mod description;
+mod sync;
 mod ui;
 
 use std::path::PathBuf;
@@ -169,6 +170,9 @@ async fn main() {
 
     if let Some(subcommand) = arg.cmd {
         match subcommand {
+            VkCommands::Sync(_) => {
+                sync::fetch_local("./local".into(), &api).await;
+            }
             VkCommands::TaskInfo(task_info_cmd) => {
                 if !task_info_cmd.json {
                     ui::task::print_task_info(task_info_cmd.task_id, &api).await;
