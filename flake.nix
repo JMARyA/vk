@@ -31,9 +31,18 @@
           inherit src;
           strictDeps = true;
 
+          OPENSSL_NO_VENDOR = "1";
+
+          PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+
+          nativeBuildInputs = [
+            pkgs.pkg-config
+          ];
+
           buildInputs = [
+            pkgs.openssl
           ]
-          ++ lib.optionals pkgs.stdenv.isDarwin [
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
             pkgs.libiconv
           ];
         };
