@@ -1,3 +1,5 @@
+use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
 use vikunjars::models::{ModelsProject, ModelsTask, ModelsTaskComment};
 
 use crate::{
@@ -21,7 +23,7 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
 
     let max_title_len = tasks
         .iter()
-        .map(|t| t.title.as_deref().unwrap_or("").chars().count())
+        .map(|t| t.title.as_deref().unwrap_or("").width())
         .max()
         .unwrap_or(10)
         .min(45);
@@ -34,7 +36,7 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
                     .iter()
                     .find(|p| p.id == t.project_id)
                     .and_then(|p| p.title.as_ref())
-                    .map(|name| name.len() + 2)
+                    .map(|name| name.width() + 2)
             })
             .max()
             .unwrap_or(0)
@@ -73,12 +75,22 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
 
         // Title, truncated with ellipsis if needed
         let title = task.title.as_deref().unwrap_or("");
-        let title_chars: Vec<char> = title.chars().collect();
-        let (display_title, visual_len) = if title_chars.len() > max_title_len {
-            let truncated: String = title_chars[..max_title_len - 1].iter().collect();
-            (format!("{truncated}…"), max_title_len)
+        let (display_title, visual_len) = if title.width() > max_title_len {
+            let mut w = 0;
+            let mut truncated = String::new();
+            for ch in title.chars() {
+                let cw = ch.width().unwrap_or(0);
+                if w + cw > max_title_len - 1 {
+                    break;
+                }
+                truncated.push(ch);
+                w += cw;
+            }
+            truncated.push('…');
+            (truncated, max_title_len)
         } else {
-            (title.to_string(), title_chars.len())
+            let w = title.width();
+            (title.to_string(), w)
         };
         print_color(
             if is_overdue {
@@ -106,7 +118,7 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
             if let Some(proj) = projects.iter().find(|p| p.id == task.project_id) {
                 let name = proj.title.as_deref().unwrap_or("");
                 let proj_display = format!("[{name}]");
-                let proj_pad = max_proj_len.saturating_sub(proj_display.len());
+                let proj_pad = max_proj_len.saturating_sub(proj_display.width());
                 let color = proj
                     .hex_color
                     .as_deref()
