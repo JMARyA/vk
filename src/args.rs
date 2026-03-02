@@ -29,6 +29,7 @@ pub enum VkCommands {
     TaskInfo(TaskInfoCmd),
     TaskEdit(TaskEditCmd),
     TaskRemove(TaskRemoveCmd),
+    Stats(StatsCmd),
     TaskDone(TaskDoneCmd),
     TaskNew(TaskNewCmd),
     TaskAssign(TaskAssignCmd),
@@ -343,6 +344,11 @@ pub struct LabelRemoveCmd {
     #[argh(positional)]
     pub title: String,
 }
+
+/// Show stats dashboard
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "stats")]
+pub struct StatsCmd {}
 
 pub fn get_args() -> VkCLI {
     argh::from_env()

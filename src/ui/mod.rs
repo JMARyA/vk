@@ -10,6 +10,7 @@ use vikunjars::models::ModelsLabel;
 use crate::api::VikunjaAPI;
 
 pub mod project;
+pub mod stats;
 pub mod task;
 
 fn format_html_to_terminal(html: &str) -> String {
@@ -48,7 +49,7 @@ pub fn hex_to_color(hex: &str) -> Result<Color, String> {
 }
 
 /// Parse datetime string
-fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
+pub fn parse_datetime(datetime_str: &str) -> Option<DateTime<Utc>> {
     if datetime_str == "0001-01-01T00:00:00Z" {
         return None;
     }

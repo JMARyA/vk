@@ -9,7 +9,7 @@ use api::{ProjectID, Relation, VikunjaAPI};
 use once_cell::sync::Lazy;
 use ui::{hex_to_color, print_color};
 
-use crate::args::{LabelCmds, LoginCmd, ProjectCmds, TaskEditCmd, VkCommands};
+use crate::args::{LabelCmds, LoginCmd, ProjectCmds, VkCommands};
 
 static CONFIG_PATH: Lazy<PathBuf> =
     Lazy::new(|| dirs::home_dir().unwrap().join(".config").join("vk.toml"));
@@ -316,6 +316,9 @@ async fn main() {
                 ui::task::print_task_info(task_fav_cmd.task_id, &api).await;
             }
 
+            VkCommands::Stats(_) => {
+                ui::stats::print_stats(&api, &config).await;
+            }
             VkCommands::Login(_) => unreachable!(),
             VkCommands::ProjectCmds(project_cmds) => project_commands(project_cmds, &api).await,
             VkCommands::Labels(label_cmds) => label_commands(label_cmds, &api).await,
