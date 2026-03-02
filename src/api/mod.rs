@@ -389,14 +389,18 @@ impl VikunjaAPI {
         task_id: i32,
         done: bool,
     ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let existing = self
+            .get_task(task_id)
+            .await
+            .expect("Failed to fetch task before updating");
         let task = ModelsTask {
             done: Some(done),
             done_at: if done {
                 Some(chrono::Utc::now().to_rfc3339())
             } else {
-                None
+                existing.done_at.clone()
             },
-            ..Default::default()
+            ..existing
         };
         vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
     }
@@ -406,9 +410,13 @@ impl VikunjaAPI {
         task_id: i32,
         fav: bool,
     ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let existing = self
+            .get_task(task_id)
+            .await
+            .expect("Failed to fetch task before updating");
         let task = ModelsTask {
             is_favorite: Some(fav),
-            ..Default::default()
+            ..existing
         };
         vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
     }
