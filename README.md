@@ -1,103 +1,124 @@
 # vk
-`vk` is a command line todo tool for Vikunja.
+
+A fast, opinionated terminal interface for [Vikunja](https://vikunja.io). Built for people who live in the terminal.
+
+```
+  ◆  Fix authentication bug           [Hydra]      ★   2d ago
+  ◆  Update README                    [vk]              just now
+  ◆  Design CLI vision                [vk]          ★   just now
+  ◆  vikunja-rs patches               [Sidequest]       overdue 2d
+```
+
+## Install
+
+```shell
+cargo install --git https://git.hydrar.de/jmarya/vk
+```
 
 ## Setup
-vk saves it's configuration at `$HOME/.config/vk.toml`.
 
-To log in to your Vikunja Instance you can either use a API Token which you have to create manually or sign in using:
+vk stores its config at `~/.config/vk.toml`.
+
+Login with your credentials:
 ```shell
-vk login --username user --password somepass --totp code --host vikunja.example.com
+vk login --host vikunja.example.com --username user --password pass
+vk login --host vikunja.example.com --username user --password pass --totp 123456
+```
+
+Or set up the config manually with an API token:
+```toml
+host  = "https://vikunja.example.com"
+token = "your-api-token"
 ```
 
 ## Usage
 
-**Show your current todos:**
 ```shell
-# Just this
-vk
-
-# See done tasks as well
-vk -d
-vk --done
-
-# Show favorites only
-vk -f
-vk --favorite
-
-# Show tasks from specific project
-vk --from myproject
-
-# Show tasks which have a label
-vk -l label
-vk --label label
+vk                   # your tasks
+vk -d                # include done tasks
+vk -f                # favorites only
+vk --from myproject  # tasks from a specific project
+vk -l mylabel        # tasks with a specific label
+vk stats             # dashboard with stats overview
 ```
 
-**Working with tasks:**
+**Tasks:**
 ```shell
-# Create a task
-vk new mytask
+vk new "fix the bug"                         # create in default project
+vk new "fix the bug" --project myproject     # create in specific project
+vk new "fix the bug" --due 2024-12-31        # with due date
+vk new "fix the bug" --label urgent          # with label
+vk new "fix the bug" --priority 4           # with priority
 
-# Task Detail View
-vk info 42 # Tasks are referenced by their ID
-
-# Remove a task
-vk rm 42
-
-# Mark as done
-vk done 42
-vk done -u 42 # You can undo this
-
-# Mark as favorite
-vk fav 42
-vk fav -u 42 # Undo
-
-# Assign a user to a task
-vk assign me 42
-vk assign -u me 42 # Undo
+vk info 42           # full task detail
+vk edit 42           # edit a task
+vk done 42           # mark as done
+vk done -u 42        # undo
+vk fav 42            # mark as favorite
+vk fav -u 42         # undo
+vk rm 42             # delete
 ```
 
-**Working with projects:**
+**Comments:**
 ```shell
-# List your projects
-vk prj ls
-
-# Create a new project
-vk prj add MyPrj --description "My project"
-
-# Remove a project
-vk prj rm MyPrj
-```
-
-**Working with labels:**
-```shell
-# Assign a label to a task
-vk label mylabel 42
-vk label -u mylabel 42 # Undo as well
-
-# List your labels
-vk labels ls
-
-# Create a new label
-vk labels new mylabel
-
-# Remove a label
-vk labels rm mylabel
-```
-
-**Working with comments:**
-```shell
-# Show comments of task
-vk comments 42
-
-# Comment on a task
-vk comment 42 "my comment"
+vk comments 42       # show comments
+vk comment 42 "text" # post a comment
 ```
 
 **Relations:**
 ```shell
-# Make Task #42 be a parent task to #7
-vk relation 7 parent 42
+vk relation 7 parent 42    # make #42 a parent of #7
+vk relation 42 blocked 7   # mark #42 as blocked by #7
+vk relation 42 sub 7       # make #7 a subtask of #42
+vk relation --delete 42 blocked 7
+```
 
-# Make #42 blocked by #7
-vk relation 42 blocked 7
+**Assignments:**
+```shell
+vk assign user 42    # assign user to task
+vk assign -u user 42 # unassign
+```
+
+**Labels:**
+```shell
+vk label urgent 42   # add label to task
+vk label -u urgent 42
+
+vk labels ls
+vk labels new urgent --color ff0000
+vk labels rm urgent
+```
+
+**Projects:**
+```shell
+vk prj ls
+vk prj add "My Project" --description "..." --color 8800ff
+vk prj add "Sub Project" --parent "My Project"
+vk prj rm "My Project"
+```
+
+## Configuration
+
+Full config reference with defaults:
+
+```toml
+host  = "https://vikunja.example.com"
+token = "your-token"
+
+# display
+bullet          = "◆"        # task bullet — any string works
+show_id         = false       # show task ID in the list
+show_age        = true        # show relative timestamp
+show_labels     = false       # show label chips in the task list
+date_format     = "relative"  # "relative" | "absolute" | "hidden"
+
+# behaviour
+default_view    = "tasks"     # what `vk` shows with no args: "tasks" | "stats"
+default_project = "Inbox"     # project used by `vk new` when --project is omitted
+page_size       = 25          # tasks shown in list view
+sort_by         = "created"   # "created" | "due" | "priority" | "updated"
+order           = "desc"      # "asc" | "desc"
+
+# vk stats
+stats_logo      = true        # show ASCII logo in stats view
 ```
