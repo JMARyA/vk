@@ -19,6 +19,10 @@ pub struct VkCLI {
     /// show only tasks with label
     pub label: Option<String>,
 
+    #[argh(switch, short = 'j')]
+    /// output as json
+    pub json: bool,
+
     #[argh(subcommand)]
     pub cmd: Option<VkCommands>,
 }
@@ -178,6 +182,10 @@ pub struct TaskAssignCmd {
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "comments")]
 pub struct TaskCommentsCmd {
+    #[argh(switch, short = 'j')]
+    /// output as json
+    pub json: bool,
+
     /// task ID
     #[argh(positional)]
     pub task_id: i32,
@@ -266,7 +274,11 @@ pub enum ProjectCommands {
 /// List projects
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "ls")]
-pub struct ProjectListCmd {}
+pub struct ProjectListCmd {
+    #[argh(switch, short = 'j')]
+    /// output as json
+    pub json: bool,
+}
 
 /// Create a new project
 #[derive(FromArgs, PartialEq, Debug)]
@@ -317,7 +329,11 @@ pub enum LabelCommands {
 /// List all labels
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "ls")]
-pub struct LabelListCmd {}
+pub struct LabelListCmd {
+    #[argh(switch, short = 'j')]
+    /// output as json
+    pub json: bool,
+}
 
 /// Create a new label
 #[derive(FromArgs, PartialEq, Debug)]

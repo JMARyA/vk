@@ -34,8 +34,13 @@ async fn login_cmd(arg: &LoginCmd) {
 
 async fn project_commands(arg: ProjectCmds, api: &VikunjaAPI) {
     match arg.cmd {
-        args::ProjectCommands::List(_) => {
-            ui::project::list_projects(api).await;
+        args::ProjectCommands::List(cmd) => {
+            if cmd.json {
+                let projects = api.get_all_projects().await.unwrap();
+                println!("{}", serde_json::to_string(&projects).unwrap());
+            } else {
+                ui::project::list_projects(api).await;
+            }
         }
         args::ProjectCommands::Add(project_add_cmd) => {
             let parent = if let Some(parent) = project_add_cmd.parent {
@@ -66,8 +71,13 @@ async fn project_commands(arg: ProjectCmds, api: &VikunjaAPI) {
 
 async fn label_commands(arg: LabelCmds, api: &VikunjaAPI) {
     match arg.cmd {
-        args::LabelCommands::List(_) => {
-            ui::print_all_labels(api).await;
+        args::LabelCommands::List(cmd) => {
+            if cmd.json {
+                let labels = api.get_all_labels().await;
+                println!("{}", serde_json::to_string(&labels).unwrap());
+            } else {
+                ui::print_all_labels(api).await;
+            }
         }
         args::LabelCommands::New(label_new_cmd) => {
             if let Some(color) = &label_new_cmd.color {
@@ -296,8 +306,12 @@ async fn main() {
                     .await
                     .unwrap();
 
-                for comment in comments {
-                    ui::task::print_comment(&comment);
+                if task_comments_cmd.json {
+                    println!("{}", serde_json::to_string(&comments).unwrap());
+                } else {
+                    for comment in comments {
+                        ui::task::print_comment(&comment);
+                    }
                 }
             }
             VkCommands::TaskComment(task_comment_cmd) => {
@@ -371,6 +385,33 @@ async fn main() {
             VkCommands::ProjectCmds(project_cmds) => project_commands(project_cmds, &api).await,
             VkCommands::Labels(label_cmds) => label_commands(label_cmds, &api).await,
         }
+    } else if arg.json {
+        let has_filters = arg.from.is_some() || arg.label.is_some();
+        let mut tasks = if has_filters {
+            api.get_all_tasks().await
+        } else {
+            api.get_latest_tasks().await.unwrap()
+        };
+        if !arg.done {
+            tasks.retain(|x| !x.done.unwrap_or_default());
+        }
+        if arg.favorite {
+            tasks.retain(|x| x.is_favorite.unwrap_or_default());
+        }
+        if let Some(from) = arg.from {
+            let p_id = ProjectID::parse(&api, &from).await.unwrap();
+            tasks.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
+        }
+        if let Some(label) = arg.label {
+            tasks.retain(|x| {
+                x.labels.as_ref().map_or(false, |labels| {
+                    labels
+                        .iter()
+                        .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
+                })
+            });
+        }
+        println!("{}", serde_json::to_string(&tasks).unwrap());
     } else {
         ui::task::print_current_tasks(&api, arg.done, arg.favorite, arg.from, arg.label).await;
     }
