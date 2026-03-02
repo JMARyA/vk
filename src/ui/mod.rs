@@ -100,6 +100,7 @@ pub async fn print_all_labels(api: &VikunjaAPI) {
 
     for label in labels {
         print_label(&label);
-        print!("\n\n");
+        print!("  ");
     }
+    println!();
 }

@@ -26,18 +26,21 @@ pub async fn list_projects(api: &VikunjaAPI) {
         } else {
             hex_to_color(&prj.hex_color.as_ref().unwrap()).unwrap()
         };
-        print_color(color, &prj.title.as_ref().unwrap());
-        println!(" [{}]", prj.id.unwrap());
+        print_color(color, prj.title.as_deref().unwrap_or(""));
+        print_color(Color::DarkGrey, &format!("  #{}\n", prj.id.unwrap_or(0)));
 
         if let Some(sub_projects) = project_map.get(&(prj.id.unwrap() as isize)) {
-            for sub_prj in sub_projects {
+            let last = sub_projects.len().saturating_sub(1);
+            for (i, sub_prj) in sub_projects.iter().enumerate() {
                 let color = if sub_prj.hex_color.as_ref().unwrap().is_empty() {
                     Color::Reset
                 } else {
                     hex_to_color(&sub_prj.hex_color.as_ref().unwrap()).unwrap()
                 };
-                print_color(color, &format!("  - {}", sub_prj.title.as_ref().unwrap()));
-                println!(" [{}]", sub_prj.id.unwrap());
+                let connector = if i == last { "  └ " } else { "  ├ " };
+                print_color(Color::DarkGrey, connector);
+                print_color(color, sub_prj.title.as_deref().unwrap_or(""));
+                print_color(Color::DarkGrey, &format!("  #{}\n", sub_prj.id.unwrap_or(0)));
             }
         }
     }
