@@ -301,9 +301,28 @@ async fn main() {
                 }
             }
             VkCommands::TaskComment(task_comment_cmd) => {
-                api.new_comment(task_comment_cmd.task_id, task_comment_cmd.comment)
-                    .await
-                    .unwrap();
+                let text = match task_comment_cmd.comment {
+                    Some(t) => t,
+                    None => {
+                        let tmp_path = std::env::temp_dir()
+                            .join(format!("vk_comment_{}.md", task_comment_cmd.task_id));
+                        std::fs::write(&tmp_path, "").unwrap();
+                        let editor =
+                            std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                        std::process::Command::new(editor)
+                            .arg(&tmp_path)
+                            .status()
+                            .unwrap();
+                        let t = std::fs::read_to_string(&tmp_path).unwrap();
+                        std::fs::remove_file(&tmp_path).ok();
+                        t
+                    }
+                };
+                if !text.trim().is_empty() {
+                    api.new_comment(task_comment_cmd.task_id, text)
+                        .await
+                        .unwrap();
+                }
             }
             VkCommands::TaskRelation(task_relation_cmd) => {
                 let task_id = task_relation_cmd.task_id;

@@ -191,9 +191,9 @@ pub struct TaskCommentCmd {
     #[argh(positional)]
     pub task_id: i32,
 
-    /// comment
+    /// comment text (opens $EDITOR if omitted)
     #[argh(positional)]
-    pub comment: String,
+    pub comment: Option<String>,
 }
 
 /// Set task relations
