@@ -27,6 +27,7 @@ pub struct VkCLI {
 #[argh(subcommand)]
 pub enum VkCommands {
     TaskInfo(TaskInfoCmd),
+    TaskEdit(TaskEditCmd),
     TaskRemove(TaskRemoveCmd),
     TaskDone(TaskDoneCmd),
     TaskNew(TaskNewCmd),
@@ -52,6 +53,31 @@ pub struct TaskInfoCmd {
     #[argh(positional)]
     /// task id
     pub task_id: i32,
+}
+
+/// Edit a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "edit")]
+pub struct TaskEditCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+
+    /// new title
+    #[argh(option)]
+    pub title: Option<String>,
+
+    /// new description
+    #[argh(option)]
+    pub description: Option<String>,
+
+    /// new due date
+    #[argh(option)]
+    pub due: Option<String>,
+
+    /// new priority
+    #[argh(option)]
+    pub priority: Option<String>,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]

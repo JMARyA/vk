@@ -362,6 +362,24 @@ impl VikunjaAPI {
         Ok(ret)
     }
 
+    pub async fn edit_task(
+        &self,
+        task_id: i32,
+        title: Option<String>,
+        description: Option<String>,
+        due_date: Option<String>,
+        priority: Option<i32>,
+    ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let task = ModelsTask {
+            title,
+            description,
+            due_date,
+            priority,
+            ..Default::default()
+        };
+        vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
+    }
+
     pub async fn done_task(
         &self,
         task_id: i32,

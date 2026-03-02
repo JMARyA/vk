@@ -9,7 +9,7 @@ use api::{ProjectID, Relation, VikunjaAPI};
 use once_cell::sync::Lazy;
 use ui::{hex_to_color, print_color};
 
-use crate::args::{LabelCmds, LoginCmd, ProjectCmds, VkCommands};
+use crate::args::{LabelCmds, LoginCmd, ProjectCmds, TaskEditCmd, VkCommands};
 
 static CONFIG_PATH: Lazy<PathBuf> =
     Lazy::new(|| dirs::home_dir().unwrap().join(".config").join("vk.toml"));
@@ -178,6 +178,27 @@ async fn main() {
                     });
 
                 println!("{}", serde_json::to_string(&task).unwrap());
+            }
+            VkCommands::TaskEdit(task_edit_cmd) => {
+                let due_date = task_edit_cmd.due.map(|x| {
+                    if let Some(parsed) = parse_datetime(&x) {
+                        parsed.to_rfc3339()
+                    } else {
+                        print_color(crossterm::style::Color::Red, "Failed to parse due date");
+                        println!();
+                        std::process::exit(1);
+                    }
+                });
+                api.edit_task(
+                    task_edit_cmd.task_id,
+                    task_edit_cmd.title,
+                    task_edit_cmd.description,
+                    due_date,
+                    task_edit_cmd.priority.map(|x| x.parse().unwrap()),
+                )
+                .await
+                .unwrap();
+                ui::task::print_task_info(task_edit_cmd.task_id, &api).await;
             }
             VkCommands::TaskRemove(task_remove_cmd) => {
                 api.delete_task(task_remove_cmd.task_id).await;
