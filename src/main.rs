@@ -180,6 +180,35 @@ async fn main() {
                 println!("{}", serde_json::to_string(&task).unwrap());
             }
             VkCommands::TaskEdit(task_edit_cmd) => {
+                let no_flags = task_edit_cmd.title.is_none()
+                    && task_edit_cmd.description.is_none()
+                    && task_edit_cmd.due.is_none()
+                    && task_edit_cmd.priority.is_none();
+
+                let description = if no_flags {
+                    let existing = api.get_task(task_edit_cmd.task_id).await.unwrap();
+                    let current = existing.description.clone().unwrap_or_default();
+
+                    let tmp_path = std::env::temp_dir().join(format!("vk_edit_{}.md", task_edit_cmd.task_id));
+                    std::fs::write(&tmp_path, &current).unwrap();
+
+                    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                    std::process::Command::new(editor)
+                        .arg(&tmp_path)
+                        .status()
+                        .unwrap();
+
+                    let new_desc = std::fs::read_to_string(&tmp_path).unwrap();
+                    std::fs::remove_file(&tmp_path).ok();
+
+                    if new_desc == current {
+                        return;
+                    }
+                    Some(new_desc)
+                } else {
+                    task_edit_cmd.description
+                };
+
                 let due_date = task_edit_cmd.due.map(|x| {
                     if let Some(parsed) = parse_datetime(&x) {
                         parsed.to_rfc3339()
@@ -192,7 +221,7 @@ async fn main() {
                 api.edit_task(
                     task_edit_cmd.task_id,
                     task_edit_cmd.title,
-                    task_edit_cmd.description,
+                    description,
                     due_date,
                     task_edit_cmd.priority.map(|x| x.parse().unwrap()),
                 )

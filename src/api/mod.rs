@@ -370,12 +370,16 @@ impl VikunjaAPI {
         due_date: Option<String>,
         priority: Option<i32>,
     ) -> Result<ModelsTask, Error<TasksIdPostError>> {
+        let existing = self
+            .get_task(task_id)
+            .await
+            .expect("Failed to fetch task before editing");
         let task = ModelsTask {
-            title,
-            description,
-            due_date,
-            priority,
-            ..Default::default()
+            title: title.or(existing.title.clone()),
+            description: description.or(existing.description.clone()),
+            due_date: due_date.or(existing.due_date.clone()),
+            priority: priority.or(existing.priority),
+            ..existing
         };
         vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await
     }
