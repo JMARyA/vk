@@ -12,7 +12,7 @@ use vikunjars::apis::labels_api::TasksTaskLabelsPutError;
 use vikunjars::apis::project_api::ProjectsGetError;
 use vikunjars::apis::project_api::ProjectsIdGetError;
 use vikunjars::apis::project_api::ProjectsPutError;
-use vikunjars::apis::task_api::TasksAllGetError;
+use vikunjars::apis::task_api::TasksGetError;
 use vikunjars::apis::task_api::TasksIdGetError;
 use vikunjars::apis::task_api::TasksIdPostError;
 use vikunjars::apis::task_api::TasksTaskIdCommentsGetError;
@@ -146,7 +146,7 @@ impl VikunjaAPI {
     pub async fn get_all_projects(
         &self,
     ) -> Result<Vec<vikunjars::models::ModelsProject>, Error<ProjectsGetError>> {
-        vikunjars::apis::project_api::projects_get(&self.configuration, None, None, None, None)
+        vikunjars::apis::project_api::projects_get(&self.configuration, None, None, None, None, None)
             .await
     }
 
@@ -269,8 +269,8 @@ impl VikunjaAPI {
     pub async fn get_task_page(
         &self,
         page: usize,
-    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksAllGetError>> {
-        vikunjars::apis::task_api::tasks_all_get(
+    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksGetError>> {
+        vikunjars::apis::task_api::tasks_get(
             &self.configuration,
             Some(page as i32),
             None,
@@ -291,8 +291,8 @@ impl VikunjaAPI {
 
     pub async fn get_latest_tasks(
         &self,
-    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksAllGetError>> {
-        vikunjars::apis::task_api::tasks_all_get(
+    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksGetError>> {
+        vikunjars::apis::task_api::tasks_get(
             &self.configuration,
             None,
             Some(25),
@@ -311,7 +311,7 @@ impl VikunjaAPI {
         &self,
         id: i32,
     ) -> Result<ModelsTask, vikunjars::apis::Error<TasksIdGetError>> {
-        vikunjars::apis::task_api::tasks_id_get(&self.configuration, id).await
+        vikunjars::apis::task_api::tasks_id_get(&self.configuration, id, None).await
     }
 
     pub async fn delete_task(&self, id: i32) {
@@ -448,7 +448,7 @@ impl VikunjaAPI {
         &self,
         task_id: i32,
     ) -> Result<Vec<ModelsTaskComment>, vikunjars::apis::Error<TasksTaskIdCommentsGetError>> {
-        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id).await
+        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id, None).await
     }
 
     pub async fn remove_relation(&self, task_id: i32, relation: &Relation, other_task_id: i32) {
