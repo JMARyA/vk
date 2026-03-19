@@ -1,6 +1,7 @@
 mod api;
 mod args;
 mod config;
+mod description;
 mod ui;
 
 use std::path::PathBuf;
@@ -197,10 +198,11 @@ async fn main() {
 
                 let description = if no_flags {
                     let existing = api.get_task(task_edit_cmd.task_id).await.unwrap();
-                    let current = existing.description.clone().unwrap_or_default();
+                    let current_html = existing.description.clone().unwrap_or_default();
+                    let current_md = description::html_to_markdown(&current_html);
 
                     let tmp_path = std::env::temp_dir().join(format!("vk_edit_{}.md", task_edit_cmd.task_id));
-                    std::fs::write(&tmp_path, &current).unwrap();
+                    std::fs::write(&tmp_path, &current_md).unwrap();
 
                     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
                     std::process::Command::new(editor)
@@ -208,15 +210,15 @@ async fn main() {
                         .status()
                         .unwrap();
 
-                    let new_desc = std::fs::read_to_string(&tmp_path).unwrap();
+                    let new_md = std::fs::read_to_string(&tmp_path).unwrap();
                     std::fs::remove_file(&tmp_path).ok();
 
-                    if new_desc == current {
+                    if new_md == current_md {
                         return;
                     }
-                    Some(new_desc)
+                    Some(description::markdown_to_html(&new_md))
                 } else {
-                    task_edit_cmd.description
+                    task_edit_cmd.description.map(|d| description::markdown_to_html(&d))
                 };
 
                 let due_date = task_edit_cmd.due.map(|x| {
@@ -252,7 +254,7 @@ async fn main() {
                 let title = task_new_cmd.title;
                 let project = &task_new_cmd.project;
                 let project = ProjectID::parse(&api, project).await.unwrap();
-                let description: Option<String> = task_new_cmd.description;
+                let description: Option<String> = task_new_cmd.description.map(|d| description::markdown_to_html(&d));
                 let due_date: Option<String> = task_new_cmd.due;
                 let due_date = due_date.map(|x| {
                     if let Some(parsed) = parse_datetime(&x) {
@@ -333,7 +335,7 @@ async fn main() {
                     }
                 };
                 if !text.trim().is_empty() {
-                    api.new_comment(task_comment_cmd.task_id, text)
+                    api.new_comment(task_comment_cmd.task_id, description::markdown_to_html(&text))
                         .await
                         .unwrap();
                 }
@@ -378,6 +380,33 @@ async fn main() {
                 ui::task::print_task_info(task_fav_cmd.task_id, &api).await;
             }
 
+            VkCommands::TaskCheck(cmd) => {
+                let task_id = cmd.task_id;
+                let task = api.get_task(task_id).await.unwrap_or_else(|_| {
+                    print_color(
+                        crossterm::style::Color::Red,
+                        &format!("Could not get task #{task_id}"),
+                    );
+                    println!();
+                    std::process::exit(1);
+                });
+                let html = task.description.clone().unwrap_or_default();
+                let mut items = description::parse_task_items(&html);
+                if items.is_empty() {
+                    print_color(crossterm::style::Color::Yellow, "No subtasks found");
+                    println!();
+                    return;
+                }
+                let changed = ui::check::run_check_tui(&mut items);
+                if changed {
+                    let states: Vec<bool> = items.iter().map(|(c, _)| *c).collect();
+                    let new_html = description::apply_task_item_states(&html, &states);
+                    api.edit_task(task_id, None, Some(new_html), None, None)
+                        .await
+                        .unwrap();
+                }
+                ui::task::print_task_info(task_id, &api).await;
+            }
             VkCommands::Stats(_) => {
                 ui::stats::print_stats(&api, &config).await;
             }

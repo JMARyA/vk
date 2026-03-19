@@ -42,6 +42,7 @@ pub enum VkCommands {
     TaskRelation(TaskRelationCmd),
     TaskLabel(TaskLabelCmd),
     TaskFav(TaskFavCmd),
+    TaskCheck(TaskCheckCmd),
     Login(LoginCmd),
     ProjectCmds(ProjectCmds),
     Labels(LabelCmds),
@@ -359,6 +360,15 @@ pub struct LabelRemoveCmd {
     /// label title
     #[argh(positional)]
     pub title: String,
+}
+
+/// Interactively toggle subtasks of a task
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "check")]
+pub struct TaskCheckCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
 }
 
 /// Show stats dashboard

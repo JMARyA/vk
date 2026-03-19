@@ -5,8 +5,8 @@ use vikunjars::models::{ModelsProject, ModelsTask, ModelsTaskComment};
 use crate::{
     api::{ProjectID, Relation, VikunjaAPI},
     ui::{
-        format_html_to_terminal, hex_to_color, is_in_past, parse_datetime, print_color,
-        print_label, time_relative,
+        hex_to_color, is_in_past, parse_datetime, print_color, print_description, print_label,
+        progress_color, task_item_counts, time_relative,
     },
 };
 
@@ -44,7 +44,32 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
         0
     };
 
-    for task in tasks {
+    // Pre-compute date strings so we can measure max width for alignment.
+    let date_strings: Vec<String> = tasks
+        .iter()
+        .map(|t| {
+            let due = t.due_date.as_deref().and_then(parse_datetime);
+            let is_done = t.done.unwrap_or_default();
+            let is_overdue = due.map(is_in_past).unwrap_or(false) && !is_done;
+            if let Some(due_dt) = due {
+                if is_overdue {
+                    format!("overdue {}", time_relative(due_dt).replace(" ago", ""))
+                } else {
+                    format!("due {}", time_relative(due_dt))
+                }
+            } else {
+                t.created
+                    .as_deref()
+                    .and_then(parse_datetime)
+                    .map(time_relative)
+                    .unwrap_or_default()
+            }
+        })
+        .collect();
+
+    let max_date_len = date_strings.iter().map(|s| s.len()).max().unwrap_or(0);
+
+    for (task, date_str) in tasks.iter().zip(date_strings.iter()) {
         let due = task.due_date.as_deref().and_then(parse_datetime);
         let is_done = task.done.unwrap_or_default();
         let is_overdue = due.map(is_in_past).unwrap_or(false) && !is_done;
@@ -129,28 +154,22 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
             }
         }
 
-        // Date: due date if set, else age from created
-        let date_str = if let Some(due_dt) = due {
-            if is_overdue {
-                format!("overdue {}", time_relative(due_dt).replace(" ago", ""))
-            } else {
-                format!("due {}", time_relative(due_dt))
-            }
-        } else {
-            task.created
-                .as_deref()
-                .and_then(parse_datetime)
-                .map(time_relative)
-                .unwrap_or_default()
-        };
+        // Date — padded to max width so the subtask badge column aligns
         print_color(
             if is_overdue {
                 crossterm::style::Color::Red
             } else {
                 crossterm::style::Color::DarkGrey
             },
-            &date_str,
+            date_str,
         );
+
+        // Subtask progress badge at end of row
+        if let Some((done, total)) = task.description.as_deref().and_then(task_item_counts) {
+            let pad = max_date_len - date_str.len();
+            print!("{}", " ".repeat(pad));
+            print_color(progress_color(done, total), &format!("  [{done}/{total}]"));
+        }
 
         println!();
     }
@@ -379,8 +398,16 @@ pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) {
     // ── Description ──────────────────────────────────────────────────
     let desc = task.description.unwrap_or_default();
     if desc != "<p></p>" && !desc.is_empty() {
+        // Subtask summary line above the divider
+        if let Some((done, total)) = task_item_counts(&desc) {
+            let color = progress_color(done, total);
+            let icon = if done == total { "●" } else if done > 0 { "◐" } else { "○" };
+            print_color(color, &format!("{icon}  {done}/{total}"));
+            print_color(crossterm::style::Color::DarkGrey, " subtasks");
+            println!();
+        }
         println!("{}", "─".repeat(term_width));
-        print!("{}", format_html_to_terminal(&desc));
+        print_description(&desc);
     }
 }
 
@@ -400,9 +427,6 @@ pub fn print_comment(comment: &ModelsTaskComment) {
         );
     }
     println!();
-    print!(
-        "{}",
-        format_html_to_terminal(comment.comment.as_deref().unwrap_or(""))
-    );
+    print_description(comment.comment.as_deref().unwrap_or(""));
     println!();
 }
