@@ -57,6 +57,16 @@ fn print_task_list(tasks: &[ModelsTask], projects: &[ModelsProject], show_projec
                 } else {
                     format!("due {}", time_relative(due_dt))
                 }
+            } else if let Some(start_dt) = t.start_date.as_deref().and_then(parse_datetime) {
+                if !is_in_past(start_dt) {
+                    format!("starts {}", time_relative(start_dt))
+                } else {
+                    t.created
+                        .as_deref()
+                        .and_then(parse_datetime)
+                        .map(time_relative)
+                        .unwrap_or_default()
+                }
             } else {
                 t.created
                     .as_deref()
