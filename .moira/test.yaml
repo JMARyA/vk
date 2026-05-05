@@ -1,0 +1,17 @@
+name: test
+
+trigger:
+  on_push:
+    branches: [main]
+  on_pr:
+    target: [main]
+
+steps:
+  - name: test
+    env: .moira/envs/rust.nix
+    run: |
+      rustup default stable
+      cargo check -j 4
+      cargo test -j 4 --all-features
+    vars:
+      CARGO_TERM_COLOR: always
