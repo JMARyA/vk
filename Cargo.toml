@@ -7,7 +7,7 @@ authors = ["JMARyA <jmarya@hydrar.de>"]
 [dependencies]
 argh = "0.1.13"
 chrono = "0.4.38"
-crossterm = "0.27.0"
+crossterm = "0.29.0"
 ratatui = { version = "0.28", default-features = false, features = ["crossterm"] }
 dirs = "5.0.1"
 html2text = "0.17.0"
