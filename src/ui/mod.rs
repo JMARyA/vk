@@ -59,7 +59,7 @@ pub fn task_item_counts(html: &str) -> Option<(usize, usize)> {
 }
 
 fn html2text_render(html: &str, width: usize) -> String {
-    html2text::from_read(std::io::Cursor::new(html), width)
+    html2text::from_read(std::io::Cursor::new(html), width).expect("unable to render HTML")
 }
 
 /// Render a TipTap task list (the HTML *after* the opening `<ul data-type="taskList">` tag),
