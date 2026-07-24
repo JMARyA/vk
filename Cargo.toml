@@ -8,7 +8,7 @@ authors = ["JMARyA <jmarya@hydrar.de>"]
 argh = "0.1.13"
 chrono = "0.4.38"
 crossterm = "0.29.0"
-ratatui = { version = "0.28", default-features = false, features = ["crossterm"] }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 dirs = "6.0.0"
 html2text = "0.17.0"
 moka = { version = "0.12.7", features = ["sync"] }
