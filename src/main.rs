@@ -170,8 +170,19 @@ async fn main() {
 
     if let Some(subcommand) = arg.cmd {
         match subcommand {
-            VkCommands::Sync(_) => {
-                sync::fetch_local("./local".into(), &api).await;
+            VkCommands::Sync(sync_cmd) => {
+                let opts = sync::SyncOptions {
+                    output: sync_cmd.output.into(),
+                    projects: sync_cmd.project,
+                    include_done: sync_cmd.done,
+                    include_archived: sync_cmd.archived,
+                    dry_run: sync_cmd.dry_run,
+                };
+
+                let stats = sync::fetch_local(&opts, &api).await;
+                if stats.errors > 0 {
+                    std::process::exit(1);
+                }
             }
             VkCommands::TaskInfo(task_info_cmd) => {
                 if !task_info_cmd.json {
