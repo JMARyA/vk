@@ -172,9 +172,7 @@ fn fix_task_list_markers(md: &str) -> String {
                 || stripped.starts_with("- ")
                 || stripped.starts_with("+ ");
             if is_list_item
-                && (line.contains(r"\[ \]")
-                    || line.contains(r"\[x\]")
-                    || line.contains(r"\[X\]"))
+                && (line.contains(r"\[ \]") || line.contains(r"\[x\]") || line.contains(r"\[X\]"))
             {
                 line.replace(r"\[ \]", "[ ]")
                     .replace(r"\[x\]", "[x]")
@@ -225,7 +223,7 @@ fn render_tiptap(events: &[Event]) -> String {
     // Paragraph tracking inside list items for tight lists
     let mut in_list_item = false;
     let mut item_needs_paragraph = false; // true until first content inside tight item
-    let mut item_has_tight_para = false;  // we opened a <p> for tight content
+    let mut item_has_tight_para = false; // we opened a <p> for tight content
     let mut in_paragraph = false;
 
     let mut in_table_head = false;
@@ -290,17 +288,15 @@ fn render_tiptap(events: &[Event]) -> String {
                 out.push_str(&format!("<code>{}</code>", escape_html(text)));
             }
 
-            Event::Start(Tag::CodeBlock(kind)) => {
-                match kind {
-                    CodeBlockKind::Fenced(lang) if !lang.is_empty() => {
-                        out.push_str(&format!(
-                            r#"<pre><code class="language-{}">"#,
-                            escape_html(lang)
-                        ));
-                    }
-                    _ => out.push_str("<pre><code>"),
+            Event::Start(Tag::CodeBlock(kind)) => match kind {
+                CodeBlockKind::Fenced(lang) if !lang.is_empty() => {
+                    out.push_str(&format!(
+                        r#"<pre><code class="language-{}">"#,
+                        escape_html(lang)
+                    ));
                 }
-            }
+                _ => out.push_str("<pre><code>"),
+            },
             Event::End(TagEnd::CodeBlock) => out.push_str("</code></pre>"),
 
             Event::Start(Tag::List(ordered)) => {
@@ -493,7 +489,10 @@ mod tests {
         let md = html_to_markdown(html);
         println!("task list md:\n{md}");
         assert!(md.contains("[ ]"), "unchecked marker missing, got: {md}");
-        assert!(md.contains("[x]") || md.contains("[X]"), "checked marker missing, got: {md}");
+        assert!(
+            md.contains("[x]") || md.contains("[X]"),
+            "checked marker missing, got: {md}"
+        );
     }
 
     #[test]
@@ -520,7 +519,10 @@ mod tests {
     #[test]
     fn test_md_to_html_link() {
         let html = markdown_to_html("[link](https://example.com)\n");
-        assert!(html.contains(r#"href="https://example.com""#), "got: {html}");
+        assert!(
+            html.contains(r#"href="https://example.com""#),
+            "got: {html}"
+        );
         assert!(html.contains(r#"target="_blank""#), "got: {html}");
     }
 

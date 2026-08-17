@@ -82,7 +82,7 @@ async fn label_commands(arg: LabelCmds, api: &VikunjaAPI) {
         }
         args::LabelCommands::New(label_new_cmd) => {
             if let Some(color) = &label_new_cmd.color {
-                if hex_to_color(&color).is_err() {
+                if hex_to_color(color).is_err() {
                     print_color(
                         crossterm::style::Color::Red,
                         &format!("'{color}' is no hex color"),
@@ -161,7 +161,7 @@ async fn main() {
     let arg = args::get_args();
 
     if let Some(VkCommands::Login(arg)) = &arg.cmd {
-        login_cmd(&arg).await;
+        login_cmd(arg).await;
     }
 
     let config = load_config();
@@ -201,7 +201,8 @@ async fn main() {
                     let current_html = existing.description.clone().unwrap_or_default();
                     let current_md = description::html_to_markdown(&current_html);
 
-                    let tmp_path = std::env::temp_dir().join(format!("vk_edit_{}.md", task_edit_cmd.task_id));
+                    let tmp_path =
+                        std::env::temp_dir().join(format!("vk_edit_{}.md", task_edit_cmd.task_id));
                     std::fs::write(&tmp_path, &current_md).unwrap();
 
                     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
@@ -218,7 +219,9 @@ async fn main() {
                     }
                     Some(description::markdown_to_html(&new_md))
                 } else {
-                    task_edit_cmd.description.map(|d| description::markdown_to_html(&d))
+                    task_edit_cmd
+                        .description
+                        .map(|d| description::markdown_to_html(&d))
                 };
 
                 let due_date = task_edit_cmd.due.map(|x| {
@@ -254,7 +257,9 @@ async fn main() {
                 let title = task_new_cmd.title;
                 let project = &task_new_cmd.project;
                 let project = ProjectID::parse(&api, project).await.unwrap();
-                let description: Option<String> = task_new_cmd.description.map(|d| description::markdown_to_html(&d));
+                let description: Option<String> = task_new_cmd
+                    .description
+                    .map(|d| description::markdown_to_html(&d));
                 let due_date: Option<String> = task_new_cmd.due;
                 let due_date = due_date.map(|x| {
                     if let Some(parsed) = parse_datetime(&x) {
@@ -323,8 +328,7 @@ async fn main() {
                         let tmp_path = std::env::temp_dir()
                             .join(format!("vk_comment_{}.md", task_comment_cmd.task_id));
                         std::fs::write(&tmp_path, "").unwrap();
-                        let editor =
-                            std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+                        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
                         std::process::Command::new(editor)
                             .arg(&tmp_path)
                             .status()
@@ -335,9 +339,12 @@ async fn main() {
                     }
                 };
                 if !text.trim().is_empty() {
-                    api.new_comment(task_comment_cmd.task_id, description::markdown_to_html(&text))
-                        .await
-                        .unwrap();
+                    api.new_comment(
+                        task_comment_cmd.task_id,
+                        description::markdown_to_html(&text),
+                    )
+                    .await
+                    .unwrap();
                 }
             }
             VkCommands::TaskRelation(task_relation_cmd) => {
@@ -433,7 +440,7 @@ async fn main() {
         }
         if let Some(label) = arg.label {
             tasks.retain(|x| {
-                x.labels.as_ref().map_or(false, |labels| {
+                x.labels.as_ref().is_some_and(|labels| {
                     labels
                         .iter()
                         .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
