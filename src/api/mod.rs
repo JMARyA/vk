@@ -28,6 +28,9 @@ use vikunjars::models::ModelsTaskComment;
 use vikunjars::models::ModelsTaskRelation;
 use vikunjars::models::UserUser;
 
+// Hand-rolled models predating the generated `vikunjars` client, which now
+// supplies the equivalents. Unused, kept until their removal is confirmed.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VikunjaError {
     pub code: Option<isize>,
@@ -36,6 +39,7 @@ pub struct VikunjaError {
 
 impl VikunjaError {}
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Label {
     pub id: usize,
@@ -47,6 +51,7 @@ pub struct Label {
     pub created: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: usize,
@@ -106,6 +111,8 @@ impl ProjectID {
 }
 
 pub struct VikunjaAPI {
+    // Allocated but never read — no call site caches anything yet.
+    #[allow(dead_code)]
     cache: Cache<String, String>,
     configuration: vikunjars::apis::configuration::Configuration,
 }
@@ -132,6 +139,7 @@ impl VikunjaAPI {
 
     // projects
 
+    #[allow(dead_code)]
     pub async fn get_project_name_from_id(&self, id: isize) -> String {
         let all_prj = self.get_all_projects().await.unwrap();
 
@@ -140,14 +148,21 @@ impl VikunjaAPI {
             .find(|x| x.id.unwrap() == id as i32)
             .unwrap();
 
-        found.title.unwrap()
+        found.title.unwrap_or_default()
     }
 
     pub async fn get_all_projects(
         &self,
     ) -> Result<Vec<vikunjars::models::ModelsProject>, Error<ProjectsGetError>> {
-        vikunjars::apis::project_api::projects_get(&self.configuration, None, None, None, None, None)
-            .await
+        vikunjars::apis::project_api::projects_get(
+            &self.configuration,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
     pub async fn delete_project(&self, project_id: &ProjectID) {
@@ -163,16 +178,18 @@ impl VikunjaAPI {
         color: Option<String>,
         parent: Option<ProjectID>,
     ) -> Result<ModelsProject, vikunjars::apis::Error<ProjectsPutError>> {
-        let mut data = ModelsProject::default();
-
-        data.description = description;
-        data.hex_color = color;
-        data.parent_project_id = parent.map(|x| x.0 as i32);
-        data.title = Some(title.to_string());
+        let data = ModelsProject {
+            description,
+            hex_color: color,
+            parent_project_id: parent.map(|x| x.0 as i32),
+            title: Some(title.to_string()),
+            ..Default::default()
+        };
 
         vikunjars::apis::project_api::projects_put(&self.configuration, data).await
     }
 
+    #[allow(dead_code)]
     pub async fn get_project(
         &self,
         project: &ProjectID,
@@ -197,7 +214,7 @@ impl VikunjaAPI {
     ) -> Result<ModelsLabel, vikunjars::apis::Error<LabelsPutError>> {
         let label = ModelsLabel {
             title: Some(title.to_string()),
-            description: description,
+            description,
             hex_color: color,
             ..Default::default()
         };
@@ -210,7 +227,7 @@ impl VikunjaAPI {
         let label_id = labels
             .await
             .into_iter()
-            .find(|x| x.title.as_ref().unwrap().trim() == title)
+            .find(|x| x.title.as_deref().unwrap_or("").trim() == title)
             .unwrap()
             .id
             .unwrap();
@@ -225,7 +242,7 @@ impl VikunjaAPI {
 
         let label_id = labels
             .into_iter()
-            .find(|x| x.title.as_ref().unwrap().trim() == label)
+            .find(|x| x.title.as_deref().unwrap_or("").trim() == label)
             .unwrap()
             .id
             .unwrap();
@@ -248,7 +265,7 @@ impl VikunjaAPI {
 
         let label_id = labels
             .into_iter()
-            .find(|x| x.title.as_ref().unwrap().trim() == label)
+            .find(|x| x.title.as_deref().unwrap_or("").trim() == label)
             .unwrap()
             //.map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?
             .id
@@ -320,6 +337,7 @@ impl VikunjaAPI {
             .unwrap();
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn new_task(
         &self,
         title: &str,
@@ -337,7 +355,7 @@ impl VikunjaAPI {
                 .get_all_labels()
                 .await
                 .into_iter()
-                .find(|x| x.title.as_ref().unwrap().trim() == label)
+                .find(|x| x.title.as_deref().unwrap_or("").trim() == label)
                 .map_or_else(|| Err(format!("Label '{label}' not found")), Ok)?;
             vec![label]
         } else {
@@ -346,10 +364,10 @@ impl VikunjaAPI {
 
         let data = ModelsTask {
             title: Some(title.to_string()),
-            description: description,
-            due_date: due_date,
+            description,
+            due_date,
             is_favorite: Some(fav),
-            priority: priority,
+            priority,
             labels: Some(labels),
             ..Default::default()
         };
@@ -478,7 +496,8 @@ impl VikunjaAPI {
         &self,
         task_id: i32,
     ) -> Result<Vec<ModelsTaskComment>, vikunjars::apis::Error<TasksTaskIdCommentsGetError>> {
-        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id, None).await
+        vikunjars::apis::task_api::tasks_task_id_comments_get(&self.configuration, task_id, None)
+            .await
     }
 
     pub async fn remove_relation(&self, task_id: i32, relation: &Relation, other_task_id: i32) {
@@ -530,7 +549,7 @@ impl VikunjaAPI {
         };
         vikunjars::apis::task_api::tasks_task_id_comments_put(
             &self.configuration,
-            task_id as i32,
+            task_id,
             relation,
         )
         .await
