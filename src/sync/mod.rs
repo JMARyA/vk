@@ -112,6 +112,35 @@ fn should_carry(project: i32, existing: &HashSet<i32>, selected: &HashSet<i32>) 
     existing.contains(&project) && !selected.contains(&project)
 }
 
+/// Fold the previous run's task entries into `next`, returning the paths of
+/// notes that are no longer wanted.
+///
+/// An entry written this run always wins over a carried one: a task that moved
+/// from a filtered-out project into a synced one must keep its new path, or the
+/// manifest would point at the note the move just removed.
+fn reconcile_tasks(
+    prev: &BTreeMap<i32, TaskEntry>,
+    next: &mut BTreeMap<i32, TaskEntry>,
+    existing: &HashSet<i32>,
+    selected: &HashSet<i32>,
+) -> Vec<String> {
+    let mut stale = Vec::new();
+
+    for (tid, entry) in prev {
+        if next.contains_key(tid) {
+            continue;
+        }
+
+        if should_carry(entry.project, existing, selected) {
+            next.insert(*tid, entry.clone());
+        } else {
+            stale.push(entry.path.clone());
+        }
+    }
+
+    stale
+}
+
 // ------------------------------------------------------------------ note ---
 
 pub struct TaskNote {
@@ -521,19 +550,13 @@ pub async fn fetch_local(opts: &SyncOptions, api: &VikunjaAPI) -> SyncStats {
     // Reconcile against the previous run. Entries owned by projects that still
     // exist but were not synced now are carried forward untouched; the rest
     // are pruned when they are no longer wanted.
-    for (tid, entry) in &manifest.tasks {
-        if should_carry(entry.project, &existing_ids, &selected_ids) {
-            next.tasks.insert(*tid, entry.clone());
-            continue;
-        }
-
-        if !next.tasks.contains_key(tid) {
-            remove_note(
-                &rel_to_path(&opts.output, &entry.path),
-                opts.dry_run,
-                &mut stats,
-            );
-        }
+    for rel in reconcile_tasks(
+        &manifest.tasks,
+        &mut next.tasks,
+        &existing_ids,
+        &selected_ids,
+    ) {
+        remove_note(&rel_to_path(&opts.output, &rel), opts.dry_run, &mut stats);
     }
 
     for (pid, rel) in &manifest.project_notes {
@@ -827,6 +850,44 @@ mod tests {
     fn test_deleted_projects_are_not_carried() {
         // Project 9 is gone upstream; its notes should be cleaned up.
         assert!(!should_carry(9, &ids(&[1, 2]), &ids(&[1])));
+    }
+
+    fn entry(path: &str, project: i32) -> TaskEntry {
+        TaskEntry {
+            path: path.to_string(),
+            project,
+        }
+    }
+
+    #[test]
+    fn test_reconcile_keeps_new_path_of_task_moved_into_synced_project() {
+        // Task 5 moved from project 2 (not synced this run) into project 1.
+        // The note written this run must stay tracked, not the old path.
+        let prev = BTreeMap::from([(5, entry("two/5 a.md", 2))]);
+        let mut next = BTreeMap::from([(5, entry("one/5 a.md", 1))]);
+
+        let stale = reconcile_tasks(&prev, &mut next, &ids(&[1, 2]), &ids(&[1]));
+
+        assert!(stale.is_empty());
+        assert_eq!(next[&5].path, "one/5 a.md");
+        assert_eq!(next[&5].project, 1);
+    }
+
+    #[test]
+    fn test_reconcile_carries_and_prunes() {
+        let prev = BTreeMap::from([
+            (1, entry("one/1.md", 1)),
+            (2, entry("two/2.md", 2)),
+            (9, entry("gone/9.md", 9)),
+        ]);
+        let mut next = BTreeMap::new();
+
+        let stale = reconcile_tasks(&prev, &mut next, &ids(&[1, 2]), &ids(&[1]));
+
+        // Task 1 vanished from a synced project, 9's project is gone upstream,
+        // and 2 belongs to a project this run did not touch.
+        assert_eq!(stale, vec!["one/1.md".to_string(), "gone/9.md".to_string()]);
+        assert_eq!(next.keys().collect::<Vec<_>>(), vec![&2]);
     }
 
     #[test]
