@@ -311,9 +311,11 @@ pub struct SyncOptions {
     pub include_done: bool,
     pub include_archived: bool,
     pub dry_run: bool,
+    /// Print nothing on stdout, for callers that report the stats themselves.
+    pub quiet: bool,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct SyncStats {
     pub created: usize,
     pub updated: usize,
@@ -453,11 +455,13 @@ pub async fn fetch_local(opts: &SyncOptions, api: &VikunjaAPI) -> SyncStats {
         ..Default::default()
     };
 
-    println!(
-        "Syncing into {}{}",
-        opts.output.display(),
-        if opts.dry_run { " (dry run)" } else { "" }
-    );
+    if !opts.quiet {
+        println!(
+            "Syncing into {}{}",
+            opts.output.display(),
+            if opts.dry_run { " (dry run)" } else { "" }
+        );
+    }
 
     let mut synced_tasks = 0usize;
 
@@ -536,13 +540,15 @@ pub async fn fetch_local(opts: &SyncOptions, api: &VikunjaAPI) -> SyncStats {
         next.project_dirs.insert(id, dir_rel.clone());
 
         synced_tasks += prj_tasks.len();
-        println!(
-            "  {dir_rel}  ({}: +{} ~{} -{})",
-            plural(prj_tasks.len(), "task"),
-            prj_stats.created,
-            prj_stats.updated,
-            prj_stats.removed
-        );
+        if !opts.quiet {
+            println!(
+                "  {dir_rel}  ({}: +{} ~{} -{})",
+                plural(prj_tasks.len(), "task"),
+                prj_stats.created,
+                prj_stats.updated,
+                prj_stats.removed
+            );
+        }
         stats.merge(prj_stats);
         stats.merge(note_stats);
     }
@@ -598,7 +604,9 @@ pub async fn fetch_local(opts: &SyncOptions, api: &VikunjaAPI) -> SyncStats {
         }
     }
 
-    print_summary(&stats, synced_tasks, selected.len(), opts.dry_run);
+    if !opts.quiet {
+        print_summary(&stats, synced_tasks, selected.len(), opts.dry_run);
+    }
     stats
 }
 

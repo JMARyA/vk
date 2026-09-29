@@ -25,11 +25,14 @@ vk login --host vikunja.example.com --username user --password pass
 vk login --host vikunja.example.com --username user --password pass --totp 123456
 ```
 
-Or set up the config manually with an API token:
-```toml
-host  = "https://vikunja.example.com"
-token = "your-api-token"
+Or with an API token. API tokens cannot tell vk which user they belong to, so
+pass your user id too (needed for `vk claim` and `vk --mine`):
+```shell
+vk login --host vikunja.example.com --token tk_... --user-id 1
 ```
+
+Both check the credentials before saving them. A password login records your
+user id by itself.
 
 ## Usage
 
@@ -51,6 +54,7 @@ vk new "fix the bug" --label urgent          # with label
 vk new "fix the bug" --priority 4           # with priority
 
 vk info 42           # full task detail
+vk context 42        # everything about a task as markdown (see below)
 vk edit 42           # edit a task
 vk done 42           # mark as done
 vk done -u 42        # undo
@@ -75,7 +79,7 @@ vk relation --delete 42 blocked 7
 
 **Assignments:**
 ```shell
-vk assign user 42    # assign user to task
+vk assign user 42    # assign user to task (username or numeric id)
 vk assign -u user 42 # unassign
 ```
 
@@ -114,6 +118,74 @@ until it was done (or today), lighter at its last update. On top of it,
 `+`/`-` zoom (6 hours, day, week, month per column), `s` cycle sort, `t` today, `c` center on
 the selected task, `enter` show its details, `q` quit.
 
+## Scripts and agents
+
+vk is built to be driven by scripts and AI agents as well as by hand.
+
+**Read a task in one call:**
+```shell
+vk context 42              # fields, description, checklist, relations, comments as markdown
+vk changes --since 12h     # tasks created, done or updated since then (30m, 3d, 2w, or a date)
+vk changes -p myproject --since 2026-09-28
+```
+
+**JSON everywhere.** Add `--json` (or `-j`) anywhere on the command line, or set
+`VK_JSON=1`. Commands that change something print the result: `vk new --json`
+returns the created task with its id, `vk rm --json` returns
+`{"deleted": {"task": 42}}`.
+
+**Errors and exit codes.** Failures go to stderr, as
+`{"error": {"kind": "...", "message": "..."}}` in JSON mode.
+
+| Exit | Kind        | Meaning                                              |
+|------|-------------|------------------------------------------------------|
+| 0    |             | success                                              |
+| 1    | `other`     | anything else                                        |
+| 2    | `usage`     | bad arguments or input, or a command that needs a terminal |
+| 3    | `not_found` | no such task, project, label or user                 |
+| 4    | `auth`      | not logged in, or the token lacks permission         |
+| 5    | `conflict`  | the task changed since you read it, or someone else claimed it |
+| 6    | `api`       | the server rejected the request                      |
+| 7    | `network`   | the server could not be reached                      |
+
+**Don't overwrite other people's changes.** Every command that changes a task
+takes `--expect-updated <time>`: pass the task's `updated` value from when you
+read it, and vk refuses with exit 5 if the task has changed since.
+```shell
+vk edit 42 --title "New title" --expect-updated 2026-09-29T10:00:00+02:00
+```
+
+**Preview before writing.** `--dry-run` (`-n`) on every command that changes
+something shows what would happen without doing it:
+```shell
+$ vk edit 42 --title "New title" --priority 3 -n
+Would edit task #42:
+  priority: 0 → 3
+  title: Old title → New title
+```
+
+**Long text from stdin.** `-` reads a description or comment from stdin:
+```shell
+generate-notes | vk comment 42 -
+vk edit 42 --description - < notes.md
+```
+
+**Claiming tasks.** When several agents (or you and an agent) share a board:
+```shell
+vk claim 42          # assign yourself; exit 5 if someone else has it
+vk claim 42 --force  # claim it alongside whoever has it
+vk unclaim 42        # release it
+vk --mine            # what you have claimed
+```
+Claiming a task you already hold, or releasing one you don't, succeeds without
+changing anything, so retries are safe. If two agents claim the same task at
+the same moment, the one with the lower user id keeps it.
+
+vk needs to know which user it acts as. `vk login` saves it for password
+logins; API tokens need `--user-id` at login (or `VK_USER_ID`, e.g. one per
+agent). Your id is `created_by.id` on a task you created:
+`vk info <id> --json`.
+
 ## Configuration
 
 Full config reference with defaults:
@@ -121,6 +193,7 @@ Full config reference with defaults:
 ```toml
 host  = "https://vikunja.example.com"
 token = "your-token"
+user_id = 1                   # who you are, for `vk claim`; needed with API tokens
 
 # display
 bullet          = "◆"        # task bullet — any string works

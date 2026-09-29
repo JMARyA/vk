@@ -19,8 +19,8 @@ fn project_color(prj: &ModelsProject) -> Color {
     }
 }
 
-pub async fn list_projects(api: &VikunjaAPI) {
-    let projects = api.get_all_projects().await.unwrap();
+pub async fn list_projects(api: &VikunjaAPI) -> crate::error::Result<()> {
+    let projects = api.get_all_projects().await?;
 
     let mut project_map: HashMap<isize, Vec<ModelsProject>> = HashMap::new();
 
@@ -34,7 +34,7 @@ pub async fn list_projects(api: &VikunjaAPI) {
     }
 
     let Some(top_level) = project_map.get(&0) else {
-        return;
+        return Ok(());
     };
 
     for prj in top_level {
@@ -57,4 +57,5 @@ pub async fn list_projects(api: &VikunjaAPI) {
             }
         }
     }
+    Ok(())
 }

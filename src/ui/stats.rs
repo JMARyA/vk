@@ -53,10 +53,10 @@ fn print_buffer(buffer: &ratatui::buffer::Buffer) {
     out.flush().unwrap();
 }
 
-pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
-    let tasks = api.get_all_tasks().await;
-    let projects = api.get_all_projects().await.unwrap_or_default();
-    let labels = api.get_all_labels().await;
+pub async fn print_stats(api: &VikunjaAPI, config: &Config) -> crate::error::Result<()> {
+    let tasks = api.get_all_tasks().await?;
+    let projects = api.get_all_projects().await?;
+    let labels = api.get_all_labels().await?;
 
     let today = chrono::Utc::now().date_naive();
     let week = today + chrono::Duration::days(7);
@@ -202,4 +202,5 @@ pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
 
     println!();
     print_buffer(terminal.backend().buffer());
+    Ok(())
 }

@@ -224,12 +224,13 @@ fn print_label(label: &ModelsLabel) {
     print_color_bg(color, label.title.as_deref().unwrap_or("").trim());
 }
 
-pub async fn print_all_labels(api: &VikunjaAPI) {
-    let labels = api.get_all_labels().await;
+pub async fn print_all_labels(api: &VikunjaAPI) -> crate::error::Result<()> {
+    let labels = api.get_all_labels().await?;
 
     for label in labels {
         print_label(&label);
         print!("  ");
     }
     println!();
+    Ok(())
 }
