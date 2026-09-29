@@ -13,6 +13,7 @@ pub mod check;
 pub mod project;
 pub mod stats;
 pub mod task;
+pub mod timeline;
 
 /// Interpolate between RGB colour stops at evenly-assumed positions.
 fn lerp_color(t: f32, stops: &[(f32, (u8, u8, u8))]) -> Color {

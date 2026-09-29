@@ -107,6 +107,71 @@ async fn label_commands(arg: LabelCmds, api: &VikunjaAPI) {
     }
 }
 
+async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
+    use std::io::IsTerminal;
+
+    if !std::io::stdout().is_terminal() {
+        print_color(
+            crossterm::style::Color::Red,
+            "vk timeline needs an interactive terminal",
+        );
+        println!();
+        std::process::exit(1);
+    }
+
+    let mut tasks = api.get_all_tasks().await;
+    let projects = api.get_all_projects().await.unwrap_or_default();
+
+    if !cmd.done {
+        tasks.retain(|x| !x.done.unwrap_or_default());
+    }
+    if let Some(project) = &cmd.project {
+        let Some(p_id) = ProjectID::parse(api, project).await else {
+            print_color(
+                crossterm::style::Color::Red,
+                &format!("Unknown project '{project}'"),
+            );
+            println!();
+            std::process::exit(1);
+        };
+        tasks.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
+    }
+    if let Some(label) = &cmd.label {
+        tasks.retain(|x| {
+            x.labels.as_ref().is_some_and(|labels| {
+                labels
+                    .iter()
+                    .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
+            })
+        });
+    }
+
+    let entries: Vec<ui::timeline::Entry> = tasks
+        .iter()
+        .filter_map(|t| ui::timeline::Entry::from_task(t, &projects))
+        .filter(|e| !cmd.scheduled || e.is_scheduled())
+        .collect();
+    let hidden = tasks.len() - entries.len();
+
+    if entries.is_empty() {
+        println!("No tasks to show.");
+        return;
+    }
+
+    match ui::timeline::run_timeline(entries, cmd.sort, hidden) {
+        Ok(Some(id)) => ui::task::print_task_info(id, api).await,
+        Ok(None) => {}
+        Err(e) => {
+            print_color(
+                crossterm::style::Color::Red,
+                &format!("Terminal error: {e}"),
+            );
+            println!();
+            std::process::exit(1);
+        }
+    }
+}
+
 fn load_config() -> config::Config {
     let content = &std::fs::read_to_string(CONFIG_PATH.clone()).unwrap_or_else(|e| {
         ui::print_color(
@@ -429,6 +494,7 @@ async fn main() {
                 }
                 ui::task::print_task_info(task_id, &api).await;
             }
+            VkCommands::Timeline(cmd) => timeline(cmd, &api).await,
             VkCommands::Stats(_) => {
                 ui::stats::print_stats(&api, &config).await;
             }
