@@ -563,6 +563,11 @@ impl VikunjaAPI {
             .ok_or_else(|| VkError::not_found(format!("User '{user}' not found")))
     }
 
+    /// The account vk is logged in as. API tokens are refused here.
+    pub async fn current_user(&self) -> Result<vikunjars::models::V1UserWithSettings> {
+        Ok(vikunjars::apis::user_api::user_get(&self.configuration).await?)
+    }
+
     pub async fn assign_user_id(&self, user_id: i32, task_id: i32) -> Result<()> {
         let assignee = vikunjars::models::ModelsTaskAssginee {
             user_id: Some(user_id),

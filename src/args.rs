@@ -19,6 +19,10 @@ pub struct VkCLI {
     /// show only tasks with label
     pub label: Option<String>,
 
+    #[argh(switch, short = 'm')]
+    /// show only tasks assigned to you (see `vk claim`)
+    pub mine: bool,
+
     #[argh(switch, short = 'j')]
     /// output JSON; accepted anywhere on the command line, or set VK_JSON=1
     pub json: bool,
@@ -50,6 +54,43 @@ pub enum VkCommands {
     Timeline(TimelineCmd),
     Context(ContextCmd),
     Changes(ChangesCmd),
+    Claim(ClaimCmd),
+    Unclaim(UnclaimCmd),
+}
+
+/// Claim a task by assigning yourself; fails if someone else has it
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "claim")]
+pub struct ClaimCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+
+    #[argh(switch)]
+    /// claim even if others are assigned (they stay assigned)
+    pub force: bool,
+
+    #[argh(option)]
+    /// only claim if the task's `updated` time is still this; fails with
+    /// exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would happen without changing anything
+    pub dry_run: bool,
+}
+
+/// Release a task you claimed by unassigning yourself
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "unclaim")]
+pub struct UnclaimCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+
+    #[argh(switch, short = 'n')]
+    /// show what would happen without changing anything
+    pub dry_run: bool,
 }
 
 /// Everything about one task: fields, description, checklist, relations

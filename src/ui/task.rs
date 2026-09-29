@@ -191,8 +191,9 @@ pub async fn print_current_tasks(
     fav: bool,
     project: Option<String>,
     label: Option<String>,
+    assignee: Option<i32>,
 ) -> crate::error::Result<()> {
-    let current_tasks = if project.is_some() || label.is_some() {
+    let current_tasks = if project.is_some() || label.is_some() || assignee.is_some() {
         api.get_all_tasks().await?
     } else {
         api.get_latest_tasks().await?
@@ -234,6 +235,10 @@ pub async fn print_current_tasks(
             }
             false
         });
+    }
+
+    if let Some(me) = assignee {
+        selection.retain(|t| crate::claim::assignees(t).iter().any(|(uid, _)| *uid == me));
     }
 
     let projects = api.get_all_projects().await?;

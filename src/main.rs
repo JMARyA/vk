@@ -1,6 +1,7 @@
 mod api;
 mod args;
 mod changes;
+mod claim;
 mod config;
 mod context;
 mod description;
@@ -391,7 +392,23 @@ async fn run(arg: VkCLI, json: bool) -> Result<()> {
     let api = VikunjaAPI::new(&config.host, &config.token);
 
     let Some(subcommand) = arg.cmd else {
-        return list_tasks(&api, arg.done, arg.favorite, arg.from, arg.label, json).await;
+        let assignee = if arg.mine {
+            Some(claim::resolve_me(&api, &config).await?)
+        } else {
+            None
+        };
+        return list_tasks(
+            &api,
+            TaskFilter {
+                done: arg.done,
+                favorite: arg.favorite,
+                from: arg.from,
+                label: arg.label,
+                assignee,
+            },
+            json,
+        )
+        .await;
     };
 
     match subcommand {
@@ -709,6 +726,82 @@ async fn run(arg: VkCLI, json: bool) -> Result<()> {
             ui::task::print_task_info(task_id, &api).await
         }
         VkCommands::Timeline(cmd) => timeline(cmd, &api, json).await,
+        VkCommands::Claim(cmd) => {
+            let me = claim::resolve_me(&api, &config).await?;
+            let task = api
+                .get_task_expecting(cmd.task_id, cmd.expect_updated.as_deref())
+                .await?;
+            let before = claim::assignees(&task);
+            let title = task.title.clone().unwrap_or_default();
+
+            if claim::decide(&task, me, cmd.force)? == claim::Decision::AlreadyMine {
+                if json {
+                    return print_json(&task);
+                }
+                println!(
+                    "Task #{} \"{title}\" is already claimed by you.",
+                    cmd.task_id
+                );
+                return Ok(());
+            }
+            if cmd.dry_run {
+                return plan::report(
+                    "claim",
+                    serde_json::json!({ "task": cmd.task_id, "user": me }),
+                    &format!("claim task #{} \"{title}\" as user #{me}", cmd.task_id),
+                    json,
+                );
+            }
+
+            api.assign_user_id(me, cmd.task_id).await?;
+            let after = api.get_task(cmd.task_id).await?;
+            if let Some((rival, name)) = claim::lost_race(&before, &after, me) {
+                api.unassign_user_id(me, cmd.task_id).await?;
+                return Err(VkError::new(
+                    error::Kind::Conflict,
+                    format!(
+                        "Task #{} was claimed by {name} (#{rival}) at the same time; they keep it",
+                        cmd.task_id
+                    ),
+                ));
+            }
+
+            if json {
+                print_json(&after)
+            } else {
+                println!("Claimed task #{} \"{title}\" as user #{me}.", cmd.task_id);
+                Ok(())
+            }
+        }
+        VkCommands::Unclaim(cmd) => {
+            let me = claim::resolve_me(&api, &config).await?;
+            let task = api.get_task(cmd.task_id).await?;
+            let title = task.title.clone().unwrap_or_default();
+
+            if !claim::assignees(&task).iter().any(|(uid, _)| *uid == me) {
+                if json {
+                    return print_json(&task);
+                }
+                println!("Task #{} \"{title}\" is not claimed by you.", cmd.task_id);
+                return Ok(());
+            }
+            if cmd.dry_run {
+                return plan::report(
+                    "unclaim",
+                    serde_json::json!({ "task": cmd.task_id, "user": me }),
+                    &format!("release task #{} \"{title}\"", cmd.task_id),
+                    json,
+                );
+            }
+
+            api.unassign_user_id(me, cmd.task_id).await?;
+            if json {
+                print_json(&api.get_task(cmd.task_id).await?)
+            } else {
+                println!("Released task #{} \"{title}\".", cmd.task_id);
+                Ok(())
+            }
+        }
         VkCommands::Context(cmd) => {
             let ctx = context::Context::fetch(&api, cmd.task_id).await?;
             if json {
@@ -746,20 +839,30 @@ async fn run(arg: VkCLI, json: bool) -> Result<()> {
     }
 }
 
-/// `vk` with no subcommand: the task list.
-async fn list_tasks(
-    api: &VikunjaAPI,
+/// Filters for the task list (`vk` with no subcommand).
+struct TaskFilter {
     done: bool,
     favorite: bool,
     from: Option<String>,
     label: Option<String>,
-    json: bool,
-) -> Result<()> {
+    /// Only tasks assigned to this user id.
+    assignee: Option<i32>,
+}
+
+/// `vk` with no subcommand: the task list.
+async fn list_tasks(api: &VikunjaAPI, filter: TaskFilter, json: bool) -> Result<()> {
+    let TaskFilter {
+        done,
+        favorite,
+        from,
+        label,
+        assignee,
+    } = filter;
     if !json {
-        return ui::task::print_current_tasks(api, done, favorite, from, label).await;
+        return ui::task::print_current_tasks(api, done, favorite, from, label, assignee).await;
     }
 
-    let has_filters = from.is_some() || label.is_some();
+    let has_filters = from.is_some() || label.is_some() || assignee.is_some();
     let mut tasks = if has_filters {
         api.get_all_tasks().await?
     } else {
@@ -777,6 +880,9 @@ async fn list_tasks(
     }
     if let Some(label) = label {
         retain_label(&mut tasks, &label);
+    }
+    if let Some(me) = assignee {
+        tasks.retain(|t| claim::assignees(t).iter().any(|(uid, _)| *uid == me));
     }
     print_json(&tasks)
 }
