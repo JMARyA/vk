@@ -103,8 +103,16 @@ pub fn with_favorite(existing: &ModelsTask, fav: bool) -> ModelsTask {
 
 /// Fail with a conflict unless `task.updated` is the same instant as
 /// `expected` (any RFC 3339 spelling, e.g. `Z` or `+02:00`).
+///
+/// Compared to the second: Vikunja stores whole seconds, but the responses
+/// to creating or updating a task carry the unrounded time, so a value
+/// taken from `vk new --json` would otherwise never match a later read.
 pub fn check_unchanged(task: &ModelsTask, expected: &str) -> Result<()> {
-    let parse = |s: &str| chrono::DateTime::parse_from_rfc3339(s.trim()).ok();
+    let parse = |s: &str| {
+        chrono::DateTime::parse_from_rfc3339(s.trim())
+            .ok()
+            .map(|t| t.timestamp())
+    };
     let want = parse(expected).ok_or_else(|| {
         VkError::usage(format!(
             "--expect-updated must be an RFC 3339 time like the task's `updated` field, got '{expected}'"
@@ -692,6 +700,12 @@ mod tests {
     fn test_unchanged_accepts_same_instant_in_any_offset() {
         assert!(check_unchanged(&task(), "2026-09-29T10:00:00+02:00").is_ok());
         assert!(check_unchanged(&task(), "2026-09-29T08:00:00Z").is_ok());
+    }
+
+    #[test]
+    fn test_unchanged_ignores_sub_second_precision() {
+        // As returned by creating the task, before the server rounds it.
+        assert!(check_unchanged(&task(), "2026-09-29T10:00:00.69486587+02:00").is_ok());
     }
 
     #[test]
