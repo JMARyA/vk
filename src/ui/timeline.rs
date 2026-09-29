@@ -1,6 +1,6 @@
 //! Full-screen timeline of tasks, laid out by their date fields.
 //!
-//! Each task gets a row, drawn in layers. A dim lifeline runs from `created`
+//! Each task gets a row, drawn in layers. A grey lifeline runs from `created`
 //! until the task was done (or now, while open), with `updated` marked on it.
 //! On top of that `start_date`..`end_date` is a bar, and `due_date`,
 //! reminders, projected repeats and `done_at` are markers. A vertical rule
@@ -486,10 +486,10 @@ impl Cell {
     fn symbol(self) -> char {
         match self {
             Cell::Empty => ' ',
-            Cell::Life => '·',
-            Cell::Updated => '•',
+            Cell::Life => '▄',
+            Cell::Updated => '▄',
             Cell::Today => '┊',
-            Cell::Bar => '━',
+            Cell::Bar => '▆',
             Cell::Start => '▶',
             Cell::End => '■',
             Cell::Due | Cell::Overdue => '◆',
@@ -509,7 +509,9 @@ impl Cell {
         };
         match self {
             Cell::Empty => Style::default(),
-            Cell::Life | Cell::Updated => Style::default().fg(Color::DarkGray),
+            Cell::Life => Style::default().fg(Color::DarkGray),
+            // Same glyph as the lifeline, brighter, so the line stays solid.
+            Cell::Updated => Style::default().fg(Color::Gray),
             Cell::Today => Style::default().fg(Color::Red),
             Cell::Bar | Cell::Start | Cell::End => Style::default().fg(base),
             Cell::Due => Style::default().fg(Color::Yellow),
@@ -697,9 +699,9 @@ fn details(entry: &Entry, now: NaiveDateTime) -> Vec<Line<'static>> {
 fn legend() -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
     for (sym, color, label) in [
-        ("·", Color::DarkGray, "open since created"),
-        ("•", Color::DarkGray, "updated"),
-        ("━", Color::Blue, "start–end"),
+        ("▄", Color::DarkGray, "open since created"),
+        ("▄", Color::Gray, "updated"),
+        ("▆", Color::Blue, "start–end"),
         ("◆", Color::Yellow, "due"),
         ("◇", Color::Yellow, "repeats"),
         ("◷", Color::Magenta, "reminder"),
