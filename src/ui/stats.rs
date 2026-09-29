@@ -70,7 +70,7 @@ pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
                 && t.due_date
                     .as_ref()
                     .and_then(|d| parse_datetime(d))
-                    .map_or(false, |dt| dt.date_naive() < today)
+                    .is_some_and(|dt| dt.date_naive() < today)
         })
         .count();
     let due_today = tasks
@@ -80,7 +80,7 @@ pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
                 && t.due_date
                     .as_ref()
                     .and_then(|d| parse_datetime(d))
-                    .map_or(false, |dt| dt.date_naive() == today)
+                    .is_some_and(|dt| dt.date_naive() == today)
         })
         .count();
     let due_week = tasks
@@ -90,7 +90,7 @@ pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
                 && t.due_date
                     .as_ref()
                     .and_then(|d| parse_datetime(d))
-                    .map_or(false, |dt| {
+                    .is_some_and(|dt| {
                         let d = dt.date_naive();
                         d > today && d <= week
                     })
@@ -194,8 +194,7 @@ pub async fn print_stats(api: &VikunjaAPI, config: &Config) {
 
             // Info line — ratatui clips automatically if too wide
             frame.render_widget(
-                Paragraph::new(format!("  {secondary}"))
-                    .style(Style::default().fg(accent_color)),
+                Paragraph::new(format!("  {secondary}")).style(Style::default().fg(accent_color)),
                 rows[6],
             );
         })

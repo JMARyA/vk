@@ -96,5 +96,21 @@
           ];
         };
       }
-    );
+    )
+    // {
+      # System-agnostic, so it lives outside eachDefaultSystem — moira reads it
+      # as `.#moiraFlake`.
+      #
+      # `checks.*` is the point here: vk-fmt, vk-clippy, vk-doc and vk are
+      # already crane derivations covering exactly what `.moira/test.yaml` runs
+      # by hand, and until now nothing built them. As jobs they are hermetic,
+      # pushed to the org cache, and skipped entirely on a commit that did not
+      # change their inputs.
+      moiraFlake = {
+        include = [
+          "packages.*"
+          "checks.*"
+        ];
+      };
+    };
 }

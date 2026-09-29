@@ -30,7 +30,11 @@ fn lerp_color(t: f32, stops: &[(f32, (u8, u8, u8))]) -> Color {
         }
     }
     let last = stops.last().unwrap().1;
-    Color::Rgb { r: last.0, g: last.1, b: last.2 }
+    Color::Rgb {
+        r: last.0,
+        g: last.1,
+        b: last.2,
+    }
 }
 
 /// Return a gradient colour for a completion percentage:
@@ -40,11 +44,14 @@ pub fn progress_color(done: usize, total: usize) -> Color {
         return Color::DarkGrey;
     }
     let pct = done as f32 / total as f32;
-    lerp_color(pct, &[
-        (0.0, (190, 100,  30)),  // amber  (first item ticked)
-        (0.5, (200, 190,  40)),  // yellow
-        (1.0, ( 70, 200,  90)),  // green
-    ])
+    lerp_color(
+        pct,
+        &[
+            (0.0, (190, 100, 30)), // amber  (first item ticked)
+            (0.5, (200, 190, 40)), // yellow
+            (1.0, (70, 200, 90)),  // green
+        ],
+    )
 }
 
 /// Count `(checked, total)` task-list items in TipTap HTML.
@@ -64,7 +71,7 @@ fn html2text_render(html: &str, width: usize) -> String {
 
 /// Render a TipTap task list (the HTML *after* the opening `<ul data-type="taskList">` tag),
 /// printing each item with ○/● indicators. Returns the HTML remaining after `</ul>`.
-fn print_task_list<'a>(html: &'a str, width: usize) -> &'a str {
+fn print_task_list(html: &str, width: usize) -> &str {
     let mut rest = html;
     loop {
         // Done with this task list
@@ -87,9 +94,7 @@ fn print_task_list<'a>(html: &'a str, width: usize) -> &'a str {
             rest.find("</p></div>"),
         ) {
             // Pass the inner HTML through html2text to render inline formatting
-            html2text_render(&rest[cs..ce], width)
-                .trim()
-                .to_string()
+            html2text_render(&rest[cs..ce], width).trim().to_string()
         } else {
             String::new()
         };
@@ -106,10 +111,7 @@ fn print_task_list<'a>(html: &'a str, width: usize) -> &'a str {
         println!();
 
         // Advance past this </li>
-        rest = rest
-            .find("</li>")
-            .map(|i| &rest[i + 5..])
-            .unwrap_or("");
+        rest = rest.find("</li>").map(|i| &rest[i + 5..]).unwrap_or("");
     }
 }
 
@@ -217,8 +219,8 @@ fn is_in_past(dt: DateTime<Utc>) -> bool {
 }
 
 fn print_label(label: &ModelsLabel) {
-    let color = hex_to_color(&label.hex_color.as_ref().unwrap()).unwrap_or(Color::Reset);
-    print_color_bg(color, label.title.as_ref().unwrap().trim());
+    let color = hex_to_color(label.hex_color.as_deref().unwrap_or("")).unwrap_or(Color::Reset);
+    print_color_bg(color, label.title.as_deref().unwrap_or("").trim());
 }
 
 pub async fn print_all_labels(api: &VikunjaAPI) {

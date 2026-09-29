@@ -7,15 +7,14 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     style::{Color, Modifier, Style},
-    {TerminalOptions, Viewport},
     text::{Line, Span},
     widgets::{List, ListItem, ListState},
-    Terminal,
+    Terminal, {TerminalOptions, Viewport},
 };
 
 /// Open an inline TUI for toggling subtask items. Mutates `items` in place.
 /// Returns `true` if any item was toggled (and enter was pressed to save).
-pub fn run_check_tui(items: &mut Vec<(bool, String)>) -> bool {
+pub fn run_check_tui(items: &mut [(bool, String)]) -> bool {
     let mut selected = 0usize;
     let mut changed = false;
 
@@ -45,11 +44,7 @@ pub fn run_check_tui(items: &mut Vec<(bool, String)>) -> bool {
                                 Style::default().fg(Color::DarkGray),
                             )
                         } else {
-                            (
-                                "○",
-                                Style::default().fg(Color::DarkGray),
-                                Style::default(),
-                            )
+                            ("○", Style::default().fg(Color::DarkGray), Style::default())
                         };
                         ListItem::new(Line::from(vec![
                             Span::styled(format!("  {icon} "), icon_style),
@@ -79,9 +74,7 @@ pub fn run_check_tui(items: &mut Vec<(bool, String)>) -> bool {
                         break;
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
-                        if selected > 0 {
-                            selected -= 1;
-                        }
+                        selected = selected.saturating_sub(1);
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if selected + 1 < items.len() {

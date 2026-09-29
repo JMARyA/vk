@@ -227,7 +227,7 @@ pub async fn print_current_tasks(
         selection.retain(|x| {
             if let Some(labels) = &x.labels {
                 for label in labels {
-                    if label.title.as_ref().unwrap().trim() == label_match {
+                    if label.title.as_deref().unwrap_or("").trim() == label_match {
                         return true;
                     }
                 }
@@ -272,7 +272,10 @@ pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) {
     } else if is_fav {
         print_color(crossterm::style::Color::Yellow, "★ ");
     }
-    print_color(crossterm::style::Color::Blue, task.title.as_deref().unwrap_or(""));
+    print_color(
+        crossterm::style::Color::Blue,
+        task.title.as_deref().unwrap_or(""),
+    );
     print_color(
         crossterm::style::Color::DarkGrey,
         &format!("  #{}", task.id.unwrap_or(0)),
@@ -411,7 +414,13 @@ pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) {
         // Subtask summary line above the divider
         if let Some((done, total)) = task_item_counts(&desc) {
             let color = progress_color(done, total);
-            let icon = if done == total { "●" } else if done > 0 { "◐" } else { "○" };
+            let icon = if done == total {
+                "●"
+            } else if done > 0 {
+                "◐"
+            } else {
+                "○"
+            };
             print_color(color, &format!("{icon}  {done}/{total}"));
             print_color(crossterm::style::Color::DarkGrey, " subtasks");
             println!();
