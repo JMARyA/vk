@@ -46,6 +46,32 @@ pub enum VkCommands {
     Login(LoginCmd),
     ProjectCmds(ProjectCmds),
     Labels(LabelCmds),
+    Sync(SyncCmd),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Sync vikunja tasks into a local markdown folder
+#[argh(subcommand, name = "sync")]
+pub struct SyncCmd {
+    #[argh(option, short = 'o', default = "String::from(\"./local\")")]
+    /// directory to write the synced notes into (default: ./local)
+    pub output: String,
+
+    #[argh(option, short = 'p')]
+    /// only sync these projects, by title or id (repeatable; default: all)
+    pub project: Vec<String>,
+
+    #[argh(switch)]
+    /// include tasks that are marked done
+    pub done: bool,
+
+    #[argh(switch)]
+    /// include projects that are archived
+    pub archived: bool,
+
+    #[argh(switch, short = 'n')]
+    /// report what would change without writing anything
+    pub dry_run: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]

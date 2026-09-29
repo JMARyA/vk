@@ -306,6 +306,44 @@ impl VikunjaAPI {
         get_all_items(async |x| self.get_task_page(x).await).await
     }
 
+    /// Fetch every task matching `filter`, walking all pages.
+    ///
+    /// Unlike [`Self::get_all_tasks`] this surfaces request failures instead of
+    /// silently returning a short list, so callers that need a complete set
+    /// (such as the local sync) can tell truncation apart from an empty result.
+    pub async fn get_all_tasks_filtered(
+        &self,
+        filter: Option<&str>,
+    ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksGetError>> {
+        let mut ret = Vec::new();
+        let mut page = 1;
+
+        loop {
+            let items = vikunjars::apis::task_api::tasks_get(
+                &self.configuration,
+                Some(page),
+                None,
+                None,
+                None,
+                None,
+                filter,
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+            if items.is_empty() {
+                break;
+            }
+
+            ret.extend(items);
+            page += 1;
+        }
+
+        Ok(ret)
+    }
+
     pub async fn get_latest_tasks(
         &self,
     ) -> Result<Vec<ModelsTask>, vikunjars::apis::Error<TasksGetError>> {
