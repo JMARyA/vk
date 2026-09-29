@@ -34,7 +34,8 @@ pub struct Entry {
     pub id: i32,
     pub title: String,
     pub project: String,
-    pub color: Option<Color>,
+    /// Task colour, else project colour, else one picked from `PALETTE`.
+    pub color: Color,
     pub done: bool,
     pub start: Option<NaiveDateTime>,
     pub end: Option<NaiveDateTime>,
@@ -127,6 +128,38 @@ fn to_local(s: Option<&str>) -> Option<NaiveDateTime> {
         .map(|dt| DateTime::<Local>::from(dt).naive_local())
 }
 
+/// Fallback colours for projects without one, distinct from each other and
+/// from the yellow/red/green/magenta used by markers.
+const PALETTE: [(u8, u8, u8); 10] = [
+    (97, 175, 239),  // blue
+    (152, 195, 121), // sage
+    (198, 120, 221), // purple
+    (86, 182, 194),  // teal
+    (209, 154, 102), // orange
+    (255, 140, 190), // pink
+    (130, 140, 255), // periwinkle
+    (190, 215, 110), // lime
+    (230, 130, 110), // coral
+    (120, 200, 170), // mint
+];
+
+/// A stable colour for a project that has none set, so it keeps the same
+/// colour from one run to the next.
+fn palette_color(project_id: i32) -> Color {
+    let (r, g, b) = PALETTE[project_id.unsigned_abs() as usize % PALETTE.len()];
+    Color::Rgb(r, g, b)
+}
+
+/// Mix an RGB colour towards `target` by `amount` (0.0 keeps it, 1.0 is the
+/// target). Named colours have no components to mix and are kept as is.
+fn mix(color: Color, target: (u8, u8, u8), amount: f32) -> Color {
+    let Color::Rgb(r, g, b) = color else {
+        return color;
+    };
+    let ch = |c: u8, t: u8| (c as f32 + (t as f32 - c as f32) * amount).round() as u8;
+    Color::Rgb(ch(r, target.0), ch(g, target.1), ch(b, target.2))
+}
+
 /// Parse a Vikunja hex colour (with or without `#`); empty means none.
 fn parse_color(hex: Option<&str>) -> Option<Color> {
     let hex = hex?.trim_start_matches('#');
@@ -147,7 +180,8 @@ impl Entry {
             title: task.title.clone().unwrap_or_default(),
             project: project.and_then(|p| p.title.clone()).unwrap_or_default(),
             color: parse_color(task.hex_color.as_deref())
-                .or_else(|| parse_color(project.and_then(|p| p.hex_color.as_deref()))),
+                .or_else(|| parse_color(project.and_then(|p| p.hex_color.as_deref())))
+                .unwrap_or_else(|| palette_color(task.project_id.unwrap_or_default())),
             done,
             start: to_local(task.start_date.as_deref()),
             end: to_local(task.end_date.as_deref()),
@@ -502,18 +536,25 @@ impl Cell {
     }
 
     fn style(self, entry: &Entry) -> Style {
-        let base = if entry.done {
-            Color::DarkGray
+        // Rows take their project's colour: a darker shade for the lifeline,
+        // full strength for the planned bar, a lighter tint at the last
+        // update. Finished tasks fade to grey.
+        let (life, bar, updated) = if entry.done {
+            (Color::DarkGray, Color::Gray, Color::Gray)
         } else {
-            entry.color.unwrap_or(Color::Blue)
+            (
+                mix(entry.color, (0, 0, 0), 0.45),
+                entry.color,
+                mix(entry.color, (255, 255, 255), 0.45),
+            )
         };
         match self {
             Cell::Empty => Style::default(),
-            Cell::Life => Style::default().fg(Color::DarkGray),
-            // Same glyph as the lifeline, brighter, so the line stays solid.
-            Cell::Updated => Style::default().fg(Color::Gray),
+            Cell::Life => Style::default().fg(life),
+            // Same glyph as the lifeline, lighter, so the line stays solid.
+            Cell::Updated => Style::default().fg(updated),
             Cell::Today => Style::default().fg(Color::Red),
-            Cell::Bar | Cell::Start | Cell::End => Style::default().fg(base),
+            Cell::Bar | Cell::Start | Cell::End => Style::default().fg(bar),
             Cell::Due => Style::default().fg(Color::Yellow),
             Cell::Overdue => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             Cell::Done => Style::default().fg(Color::Green),
@@ -699,9 +740,13 @@ fn details(entry: &Entry, now: NaiveDateTime) -> Vec<Line<'static>> {
 fn legend() -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
     for (sym, color, label) in [
-        ("▄", Color::DarkGray, "open since created"),
-        ("▄", Color::Gray, "updated"),
-        ("▆", Color::Blue, "start–end"),
+        (
+            "▄",
+            mix(palette_color(0), (0, 0, 0), 0.45),
+            "open since created",
+        ),
+        ("▄", mix(palette_color(0), (255, 255, 255), 0.45), "updated"),
+        ("▆", palette_color(0), "start–end"),
         ("◆", Color::Yellow, "due"),
         ("◇", Color::Yellow, "repeats"),
         ("◷", Color::Magenta, "reminder"),
@@ -816,13 +861,23 @@ fn draw(
         .take(rows)
         .map(|(i, e)| {
             let mut name_style = if e.done { dim } else { Style::default() };
+            let mut id_style = if e.done {
+                dim
+            } else {
+                Style::default().fg(e.color)
+            };
             if i == st.selected {
                 name_style = name_style.add_modifier(Modifier::REVERSED);
+                id_style = id_style.add_modifier(Modifier::REVERSED);
             }
-            let mut spans = vec![Span::styled(
-                fit(&format!("#{} {}", e.id, e.title), gutter.saturating_sub(1)),
-                name_style,
-            )];
+            // The id carries the row's colour so rows can be matched to
+            // their project from the name column too.
+            let name = fit(&format!("#{} {}", e.id, e.title), gutter.saturating_sub(1));
+            let split = name.find(' ').unwrap_or(name.len());
+            let mut spans = vec![
+                Span::styled(name[..split].to_string(), id_style),
+                Span::styled(name[split..].to_string(), name_style),
+            ];
             spans.push(Span::raw(if gutter > 0 { " " } else { "" }));
             spans.extend(
                 row_cells(e, &st.vp, width, now)
@@ -960,7 +1015,7 @@ mod tests {
             id: 1,
             title: "t".into(),
             project: String::new(),
-            color: None,
+            color: Color::Blue,
             done: false,
             start: None,
             end: None,
@@ -1340,12 +1395,37 @@ mod tests {
             ..Default::default()
         };
         let e = Entry::from_task(&task, std::slice::from_ref(&project)).unwrap();
-        assert_eq!(e.color, Some(Color::Rgb(255, 0, 0)));
+        assert_eq!(e.color, Color::Rgb(255, 0, 0));
         assert_eq!(e.project, "Work");
 
         task.hex_color = Some("00ff00".into());
         let e = Entry::from_task(&task, &[project]).unwrap();
-        assert_eq!(e.color, Some(Color::Rgb(0, 255, 0)));
+        assert_eq!(e.color, Color::Rgb(0, 255, 0));
+    }
+
+    #[test]
+    fn test_entry_without_colours_gets_stable_palette_colour() {
+        let task = ModelsTask {
+            project_id: Some(13),
+            due_date: Some("2026-10-01T10:00:00Z".into()),
+            ..Default::default()
+        };
+        let a = Entry::from_task(&task, &[]).unwrap();
+        let b = Entry::from_task(&task, &[]).unwrap();
+        assert_eq!(a.color, b.color);
+        assert_eq!(a.color, palette_color(13));
+        assert_ne!(palette_color(13), palette_color(14));
+        // Pseudo-projects have negative ids.
+        assert_eq!(palette_color(-1), palette_color(1));
+    }
+
+    #[test]
+    fn test_mix_shades_and_tints() {
+        let c = Color::Rgb(100, 200, 50);
+        assert_eq!(mix(c, (0, 0, 0), 0.5), Color::Rgb(50, 100, 25));
+        assert_eq!(mix(c, (255, 255, 255), 1.0), Color::Rgb(255, 255, 255));
+        assert_eq!(mix(c, (0, 0, 0), 0.0), c);
+        assert_eq!(mix(Color::Blue, (0, 0, 0), 0.5), Color::Blue);
     }
 
     fn sample() -> Vec<Entry> {

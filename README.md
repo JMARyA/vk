@@ -106,9 +106,10 @@ vk timeline -l mylabel -d
 vk timeline --sort newest  # time (default), newest, project, due, activity
 ```
 
-A grey `▄` lifeline runs from when a task was created until it was done (or
-today), brighter at its last update. On top of it, `start`–`end` is drawn as a
-taller `▆` bar in the task's colour, `◆` marks the due date (red when overdue), `◇` its projected repeats,
+Rows take their project's colour (or a stable one from a built-in palette when
+the project has none). A darker `▄` lifeline runs from when a task was created
+until it was done (or today), lighter at its last update. On top of it,
+`start`–`end` is drawn as a taller `▆` bar in full colour, `◆` marks the due date (red when overdue), `◇` its projected repeats,
 `◷` reminders and `✓` when it was done. Keys: `j`/`k` select, `h`/`l` scroll, `H`/`L` page,
 `+`/`-` zoom (6 hours, day, week, month per column), `s` cycle sort, `t` today, `c` center on
 the selected task, `enter` show its details, `q` quit.
