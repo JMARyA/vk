@@ -1,6 +1,8 @@
 mod api;
 mod args;
+mod changes;
 mod config;
+mod context;
 mod description;
 mod error;
 mod plan;
@@ -707,6 +709,29 @@ async fn run(arg: VkCLI, json: bool) -> Result<()> {
             ui::task::print_task_info(task_id, &api).await
         }
         VkCommands::Timeline(cmd) => timeline(cmd, &api, json).await,
+        VkCommands::Context(cmd) => {
+            let ctx = context::Context::fetch(&api, cmd.task_id).await?;
+            if json {
+                print_json(&ctx.to_json())
+            } else {
+                print!("{}", ctx.to_markdown());
+                Ok(())
+            }
+        }
+        VkCommands::Changes(cmd) => {
+            let since = changes::parse_since(&cmd.since, chrono::Utc::now())?;
+            let project = match &cmd.project {
+                Some(p) => Some(ProjectID::parse(&api, p).await?.0 as i32),
+                None => None,
+            };
+            let found = changes::Changes::fetch(&api, since, project).await?;
+            if json {
+                print_json(&found.to_json())
+            } else {
+                found.print(&api.get_all_projects().await?);
+                Ok(())
+            }
+        }
         VkCommands::Stats(_) => {
             if json {
                 return Err(VkError::usage(

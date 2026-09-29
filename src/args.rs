@@ -48,6 +48,31 @@ pub enum VkCommands {
     Labels(LabelCmds),
     Sync(SyncCmd),
     Timeline(TimelineCmd),
+    Context(ContextCmd),
+    Changes(ChangesCmd),
+}
+
+/// Everything about one task: fields, description, checklist, relations
+/// and comments, as markdown (or JSON)
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "context")]
+pub struct ContextCmd {
+    /// task ID
+    #[argh(positional)]
+    pub task_id: i32,
+}
+
+/// Tasks created, completed or updated since a point in time
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "changes")]
+pub struct ChangesCmd {
+    /// how far back: 30m, 12h, 3d, 2w, or a date/time (default: 24h)
+    #[argh(option, default = "String::from(\"24h\")")]
+    pub since: String,
+
+    /// only tasks in this project
+    #[argh(option, short = 'p')]
+    pub project: Option<String>,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
