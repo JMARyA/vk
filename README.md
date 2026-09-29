@@ -97,6 +97,18 @@ vk prj add "Sub Project" --parent "My Project"
 vk prj rm "My Project"
 ```
 
+**Timeline:**
+```shell
+vk timeline              # tasks laid out by start, end, due and done dates
+vk timeline -p myproject # one project
+vk timeline -l mylabel -d
+```
+
+`start`–`end` is drawn as a bar, `◆` marks the due date (red when overdue) and
+`✓` when it was done. Keys: `j`/`k` select, `h`/`l` scroll, `H`/`L` page,
+`+`/`-` zoom (6 hours, day, week, month per column), `t` today, `c` center on
+the selected task, `enter` show its details, `q` quit.
+
 ## Configuration
 
 Full config reference with defaults:

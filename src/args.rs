@@ -47,6 +47,7 @@ pub enum VkCommands {
     ProjectCmds(ProjectCmds),
     Labels(LabelCmds),
     Sync(SyncCmd),
+    Timeline(TimelineCmd),
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -72,6 +73,23 @@ pub struct SyncCmd {
     #[argh(switch, short = 'n')]
     /// report what would change without writing anything
     pub dry_run: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Show tasks on a timeline by their start, end, due and done dates
+#[argh(subcommand, name = "timeline")]
+pub struct TimelineCmd {
+    #[argh(option, short = 'p')]
+    /// only show tasks from this project
+    pub project: Option<String>,
+
+    #[argh(option, short = 'l')]
+    /// only show tasks with this label
+    pub label: Option<String>,
+
+    #[argh(switch, short = 'd')]
+    /// include tasks that are marked done
+    pub done: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
