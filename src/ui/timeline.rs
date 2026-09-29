@@ -219,6 +219,75 @@ impl Entry {
     }
 }
 
+// ------------------------------------------------------------------ sort ---
+
+/// Row order. Cycled with `s` in the TUI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sort {
+    /// By first planned date, falling back to creation.
+    Time,
+    /// Most recently created first.
+    Newest,
+    /// Grouped by project, by time within each.
+    Project,
+    /// By due date, undated last.
+    Due,
+    /// Most recently updated first.
+    Activity,
+}
+
+impl Sort {
+    const ALL: [Sort; 5] = [
+        Sort::Time,
+        Sort::Newest,
+        Sort::Project,
+        Sort::Due,
+        Sort::Activity,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Sort::Time => "time",
+            Sort::Newest => "newest",
+            Sort::Project => "project",
+            Sort::Due => "due",
+            Sort::Activity => "activity",
+        }
+    }
+
+    fn next(self) -> Self {
+        let i = Sort::ALL.iter().position(|s| *s == self).unwrap_or(0);
+        Sort::ALL[(i + 1) % Sort::ALL.len()]
+    }
+
+    pub fn apply(self, entries: &mut [Entry]) {
+        use std::cmp::Reverse;
+        // `Reverse(None)` orders after every `Reverse(Some(_))`, so the
+        // descending sorts also put missing dates last.
+        match self {
+            Sort::Time => entries.sort_by_key(|e| (e.anchor(), e.id)),
+            Sort::Newest => entries.sort_by_key(|e| (Reverse(e.created), Reverse(e.id))),
+            Sort::Project => entries.sort_by_key(|e| (e.project.to_lowercase(), e.anchor(), e.id)),
+            Sort::Due => entries.sort_by_key(|e| (e.due.is_none(), e.due, e.anchor(), e.id)),
+            Sort::Activity => entries.sort_by_key(|e| (Reverse(e.updated), Reverse(e.id))),
+        }
+    }
+}
+
+impl std::str::FromStr for Sort {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Sort::ALL
+            .into_iter()
+            .find(|sort| sort.name() == s)
+            .ok_or_else(|| {
+                let names: Vec<&str> = Sort::ALL.iter().map(|s| s.name()).collect();
+                format!("unknown sort '{s}', expected one of: {}", names.join(", "))
+            })
+    }
+}
+
 // ------------------------------------------------------------- viewport ---
 
 /// How much time one terminal column covers.
@@ -646,6 +715,7 @@ fn legend() -> Line<'static> {
 }
 
 struct State {
+    sort: Sort,
     selected: usize,
     scroll: usize,
     vp: Viewport,
@@ -682,10 +752,11 @@ fn draw(
     // carries the full visible range.
     let last = st.vp.time_at(width as i64) - Duration::minutes(1);
     let mut title = format!(
-        " vk timeline · {} – {} · 1 column = {} · {} tasks",
+        " vk timeline · {} – {} · 1 column = {} · by {} · {} tasks",
         st.vp.time_at(0).format("%b %-d %Y"),
         last.format("%b %-d %Y"),
         st.vp.scale.name(),
+        st.sort.name(),
         entries.len()
     );
     if hidden > 0 {
@@ -768,7 +839,7 @@ fn draw(
         Paragraph::new(vec![
             legend(),
             Line::styled(
-                " j/k select · h/l scroll · H/L page · +/- zoom · t today · c center · ⏎ info · q quit",
+                " j/k select · h/l scroll · H/L page · +/- zoom · s sort · t today · c center · ⏎ info · q quit",
                 dim,
             ),
         ]),
@@ -778,20 +849,29 @@ fn draw(
     width as i64
 }
 
+/// Index of the task whose anchor is closest to `now`, the natural place to
+/// start whatever the order. Ties go to the earlier row.
+fn nearest_to(entries: &[Entry], now: NaiveDateTime) -> usize {
+    entries
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, e)| (e.anchor() - now).abs())
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
 /// Show the timeline until the user quits. Returns the id of the task picked
 /// with enter, if any. `hidden` is the number of unscheduled tasks left out,
 /// shown in the header.
-pub fn run_timeline(entries: &[Entry], hidden: usize) -> io::Result<Option<i32>> {
-    let mut terminal = ratatui::try_init()?;
+pub fn run_timeline(mut entries: Vec<Entry>, sort: Sort, hidden: usize) -> io::Result<Option<i32>> {
     let now = Local::now().naive_local();
+    sort.apply(&mut entries);
+    let entries = &mut entries;
 
+    let mut terminal = ratatui::try_init()?;
     let mut st = State {
-        // Rows are sorted by anchor, so this lands on the first task ahead of
-        // today, or the most recent one when nothing lies ahead.
-        selected: entries
-            .iter()
-            .position(|e| e.anchor() >= now)
-            .unwrap_or(entries.len().saturating_sub(1)),
+        sort,
+        selected: nearest_to(entries, now),
         scroll: 0,
         vp: Viewport::anchored(now, Scale::Day, 0),
     };
@@ -840,6 +920,13 @@ pub fn run_timeline(entries: &[Entry], hidden: usize) -> io::Result<Option<i32>>
             }
             KeyCode::Char('-') | KeyCode::Char('_') => {
                 st.vp.zoom(st.vp.scale.zoom_out(), timeline_width / 2)
+            }
+            KeyCode::Char('s') => {
+                // Keep the same task selected across the re-sort.
+                let id = entries.get(st.selected).map(|e| e.id);
+                st.sort = st.sort.next();
+                st.sort.apply(entries);
+                st.selected = entries.iter().position(|e| Some(e.id) == id).unwrap_or(0);
             }
             KeyCode::Char('t') => st.vp = Viewport::anchored(now, st.vp.scale, timeline_width / 4),
             KeyCode::Char('c') => {
@@ -1257,6 +1344,82 @@ mod tests {
         task.hex_color = Some("00ff00".into());
         let e = Entry::from_task(&task, &[project]).unwrap();
         assert_eq!(e.color, Some(Color::Rgb(0, 255, 0)));
+    }
+
+    fn sample() -> Vec<Entry> {
+        let mk = |id, project: &str, created, updated, due| Entry {
+            id,
+            project: project.into(),
+            created: Some(created),
+            updated: Some(updated),
+            due,
+            ..entry()
+        };
+        vec![
+            mk(1, "b", at(2026, 1, 1, 0), at(2026, 9, 1, 0), None),
+            mk(
+                2,
+                "a",
+                at(2026, 3, 1, 0),
+                at(2026, 2, 1, 0),
+                Some(at(2026, 12, 1, 0)),
+            ),
+            mk(
+                3,
+                "B",
+                at(2026, 2, 1, 0),
+                at(2026, 9, 20, 0),
+                Some(at(2026, 10, 1, 0)),
+            ),
+        ]
+    }
+
+    fn order(sort: Sort) -> Vec<i32> {
+        let mut entries = sample();
+        sort.apply(&mut entries);
+        entries.iter().map(|e| e.id).collect()
+    }
+
+    #[test]
+    fn test_sort_orders() {
+        // Time: 1 is anchored on creation, 2 and 3 on their due dates.
+        assert_eq!(order(Sort::Time), vec![1, 3, 2]);
+        assert_eq!(order(Sort::Newest), vec![2, 3, 1]);
+        // Case-insensitive project, then time within the group.
+        assert_eq!(order(Sort::Project), vec![2, 1, 3]);
+        assert_eq!(order(Sort::Due), vec![3, 2, 1]);
+        assert_eq!(order(Sort::Activity), vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn test_sort_puts_missing_dates_last() {
+        let mut entries = sample();
+        entries[2].created = None;
+        entries[2].updated = None;
+        Sort::Newest.apply(&mut entries);
+        assert_eq!(entries.last().unwrap().id, 3);
+        Sort::Activity.apply(&mut entries);
+        assert_eq!(entries.last().unwrap().id, 3);
+    }
+
+    #[test]
+    fn test_sort_cycles_and_parses() {
+        let mut sort = Sort::Time;
+        for _ in 0..Sort::ALL.len() {
+            assert_eq!(sort.name().parse::<Sort>(), Ok(sort));
+            sort = sort.next();
+        }
+        assert_eq!(sort, Sort::Time);
+        assert!("bogus".parse::<Sort>().unwrap_err().contains("newest"));
+    }
+
+    #[test]
+    fn test_nearest_to_now() {
+        let entries = sample();
+        // Anchors: 1 → Jan 1, 2 → Dec 1, 3 → Oct 1.
+        assert_eq!(nearest_to(&entries, at(2026, 9, 29, 0)), 2);
+        assert_eq!(nearest_to(&entries, at(2025, 1, 1, 0)), 0);
+        assert_eq!(nearest_to(&[], at(2025, 1, 1, 0)), 0);
     }
 
     #[test]

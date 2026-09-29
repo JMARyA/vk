@@ -146,12 +146,11 @@ async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
         });
     }
 
-    let mut entries: Vec<ui::timeline::Entry> = tasks
+    let entries: Vec<ui::timeline::Entry> = tasks
         .iter()
         .filter_map(|t| ui::timeline::Entry::from_task(t, &projects))
         .filter(|e| !cmd.scheduled || e.is_scheduled())
         .collect();
-    entries.sort_by_key(|e| (e.anchor(), e.id));
     let hidden = tasks.len() - entries.len();
 
     if entries.is_empty() {
@@ -159,7 +158,7 @@ async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
         return;
     }
 
-    match ui::timeline::run_timeline(&entries, hidden) {
+    match ui::timeline::run_timeline(entries, cmd.sort, hidden) {
         Ok(Some(id)) => ui::task::print_task_info(id, api).await,
         Ok(None) => {}
         Err(e) => {

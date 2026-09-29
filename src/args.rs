@@ -94,6 +94,10 @@ pub struct TimelineCmd {
     #[argh(switch, short = 's')]
     /// only show tasks with a start, end, due date or reminder
     pub scheduled: bool,
+
+    #[argh(option, default = "crate::ui::timeline::Sort::Time")]
+    /// row order: time, newest, project, due or activity (default: time)
+    pub sort: crate::ui::timeline::Sort,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
