@@ -121,7 +121,7 @@ pub struct TaskEditCmd {
     #[argh(option)]
     pub title: Option<String>,
 
-    /// new description
+    /// new description in markdown; `-` reads it from stdin
     #[argh(option)]
     pub description: Option<String>,
 
@@ -132,6 +132,15 @@ pub struct TaskEditCmd {
     /// new priority
     #[argh(option)]
     pub priority: Option<String>,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -141,6 +150,15 @@ pub struct TaskRemoveCmd {
     #[argh(positional)]
     /// task id
     pub task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -148,15 +166,25 @@ pub struct TaskRemoveCmd {
 #[argh(subcommand, name = "done")]
 pub struct TaskDoneCmd {
     #[argh(switch, short = 'u')]
-    /// ndo completing the task
+    /// undo completing the task
     pub undo: bool,
 
     #[argh(positional)]
     /// task id
     pub task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Create a new task
+
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "new")]
 pub struct TaskNewCmd {
@@ -168,7 +196,7 @@ pub struct TaskNewCmd {
     #[argh(option, default = "String::from(\"Inbox\")")]
     pub project: String,
 
-    /// task description
+    /// task description in markdown; `-` reads it from stdin
     #[argh(option)]
     pub description: Option<String>,
 
@@ -187,6 +215,10 @@ pub struct TaskNewCmd {
     /// mark task as favorite
     #[argh(switch)]
     pub favorite: bool,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Get a JWT Token for authentication
@@ -218,13 +250,22 @@ pub struct TaskAssignCmd {
     #[argh(switch)]
     pub undo: bool,
 
-    /// user
+    /// username, or numeric user id
     #[argh(positional)]
     pub user: String,
 
     /// task ID
     #[argh(positional)]
     pub task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Show task comments
@@ -244,9 +285,14 @@ pub struct TaskCommentCmd {
     #[argh(positional)]
     pub task_id: i32,
 
-    /// comment text (opens $EDITOR if omitted)
+    /// comment text in markdown; `-` reads it from stdin, omitted opens
+    /// $EDITOR
     #[argh(positional)]
     pub comment: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Set task relations
@@ -268,6 +314,15 @@ pub struct TaskRelationCmd {
     /// other task ID
     #[argh(positional)]
     pub second_task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Favorite a task
@@ -281,6 +336,15 @@ pub struct TaskFavCmd {
     /// task ID
     #[argh(positional)]
     pub task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Add a label to a task
@@ -298,6 +362,15 @@ pub struct TaskLabelCmd {
     /// task ID
     #[argh(positional)]
     pub task_id: i32,
+
+    #[argh(option)]
+    /// only write if the task's `updated` time is still this (from a
+    /// previous read); fails with exit code 5 if it changed
+    pub expect_updated: Option<String>,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -340,15 +413,24 @@ pub struct ProjectAddCmd {
     /// project title
     #[argh(positional)]
     pub title: String,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Remove a project
+
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "rm")]
 pub struct ProjectRemoveCmd {
     /// project
     #[argh(positional)]
     pub project: String,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
@@ -387,6 +469,10 @@ pub struct LabelNewCmd {
     /// label title
     #[argh(positional)]
     pub title: String,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Remove a label
@@ -396,6 +482,10 @@ pub struct LabelRemoveCmd {
     /// label title
     #[argh(positional)]
     pub title: String,
+
+    #[argh(switch, short = 'n')]
+    /// show what would change without changing anything
+    pub dry_run: bool,
 }
 
 /// Interactively toggle subtasks of a task
@@ -412,6 +502,11 @@ pub struct TaskCheckCmd {
 #[argh(subcommand, name = "stats")]
 pub struct StatsCmd {}
 
+/// Stands in for a bare `-` argument ("read from stdin"). argh rejects `-`
+/// as a positional because it looks like a flag, so it is swapped for this
+/// before parsing.
+pub const STDIN_ARG: &str = "\u{1}stdin";
+
 /// Split `--json`/`-j` out of the arguments. argh only accepts a flag where
 /// it is declared, but JSON output applies to every command, so it is taken
 /// from any position. Arguments after `--` are left alone.
@@ -423,6 +518,10 @@ fn take_json_flag(args: Vec<String>) -> (Vec<String>, bool) {
     for arg in args {
         if !literal && (arg == "--json" || arg == "-j") {
             json = true;
+            continue;
+        }
+        if !literal && arg == "-" {
+            rest.push(STDIN_ARG.to_string());
             continue;
         }
         if arg == "--" {
@@ -488,6 +587,18 @@ mod tests {
         assert_eq!(
             take_json_flag(args(&["done", "7"])),
             (args(&["done", "7"]), false)
+        );
+    }
+
+    #[test]
+    fn test_bare_dash_becomes_stdin_marker() {
+        assert_eq!(
+            take_json_flag(args(&["comment", "42", "-"])),
+            (args(&["comment", "42", STDIN_ARG]), false)
+        );
+        assert_eq!(
+            take_json_flag(args(&["comment", "42", "--", "-"])),
+            (args(&["comment", "42", "--", "-"]), false)
         );
     }
 

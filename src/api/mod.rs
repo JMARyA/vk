@@ -61,6 +61,71 @@ pub struct User {
     pub updated: String,
 }
 
+/// Changes for `vk edit`. `None` keeps the current value.
+#[derive(Debug, Default)]
+pub struct TaskEdit {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub due_date: Option<String>,
+    pub priority: Option<i32>,
+}
+
+impl TaskEdit {
+    pub fn apply(self, existing: &ModelsTask) -> ModelsTask {
+        ModelsTask {
+            title: self.title.or(existing.title.clone()),
+            description: self.description.or(existing.description.clone()),
+            due_date: self.due_date.or(existing.due_date.clone()),
+            priority: self.priority.or(existing.priority),
+            ..existing.clone()
+        }
+    }
+}
+
+pub fn with_done(existing: &ModelsTask, done: bool) -> ModelsTask {
+    ModelsTask {
+        done: Some(done),
+        done_at: if done {
+            Some(chrono::Utc::now().to_rfc3339())
+        } else {
+            existing.done_at.clone()
+        },
+        ..existing.clone()
+    }
+}
+
+pub fn with_favorite(existing: &ModelsTask, fav: bool) -> ModelsTask {
+    ModelsTask {
+        is_favorite: Some(fav),
+        ..existing.clone()
+    }
+}
+
+/// Fail with a conflict unless `task.updated` is the same instant as
+/// `expected` (any RFC 3339 spelling, e.g. `Z` or `+02:00`).
+pub fn check_unchanged(task: &ModelsTask, expected: &str) -> Result<()> {
+    let parse = |s: &str| chrono::DateTime::parse_from_rfc3339(s.trim()).ok();
+    let want = parse(expected).ok_or_else(|| {
+        VkError::usage(format!(
+            "--expect-updated must be an RFC 3339 time like the task's `updated` field, got '{expected}'"
+        ))
+    })?;
+    let id = task.id.unwrap_or_default();
+    let actual = task.updated.as_deref().unwrap_or("");
+
+    if parse(actual) == Some(want) {
+        Ok(())
+    } else {
+        Err(VkError::new(
+            crate::error::Kind::Conflict,
+            format!(
+                "Task #{id} was updated at {actual}, not {expected}: it changed since you read it. \
+                 Re-read it and retry with the new `updated` value."
+            ),
+        ))
+    }
+}
+
 /// Collect every page. A failed page is an error rather than the end of the
 /// list, so callers never mistake a truncated result for a complete one.
 pub async fn get_all_items<F, T, E>(mut get_page: F) -> std::result::Result<Vec<T>, E>
@@ -211,7 +276,6 @@ impl VikunjaAPI {
         vikunjars::apis::project_api::projects_put(&self.configuration, data).await
     }
 
-    #[allow(dead_code)]
     pub async fn get_project(
         &self,
         project: &ProjectID,
@@ -413,46 +477,28 @@ impl VikunjaAPI {
         )
     }
 
-    pub async fn edit_task(
+    /// Fetch a task for changing it. With `expect_updated`, fail with a
+    /// conflict when the task's `updated` time differs, meaning someone
+    /// changed it after the caller last read it.
+    pub async fn get_task_expecting(
         &self,
-        task_id: i32,
-        title: Option<String>,
-        description: Option<String>,
-        due_date: Option<String>,
-        priority: Option<i32>,
+        id: i32,
+        expect_updated: Option<&str>,
     ) -> Result<ModelsTask> {
-        let existing = self.get_task(task_id).await?;
-        let task = ModelsTask {
-            title: title.or(existing.title.clone()),
-            description: description.or(existing.description.clone()),
-            due_date: due_date.or(existing.due_date.clone()),
-            priority: priority.or(existing.priority),
-            ..existing
-        };
-        Ok(vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await?)
+        let task = self.get_task(id).await?;
+        if let Some(expected) = expect_updated {
+            check_unchanged(&task, expected)?;
+        }
+        Ok(task)
     }
 
-    pub async fn done_task(&self, task_id: i32, done: bool) -> Result<ModelsTask> {
-        let existing = self.get_task(task_id).await?;
-        let task = ModelsTask {
-            done: Some(done),
-            done_at: if done {
-                Some(chrono::Utc::now().to_rfc3339())
-            } else {
-                existing.done_at.clone()
-            },
-            ..existing
-        };
-        Ok(vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await?)
-    }
-
-    pub async fn fav_task(&self, task_id: i32, fav: bool) -> Result<ModelsTask> {
-        let existing = self.get_task(task_id).await?;
-        let task = ModelsTask {
-            is_favorite: Some(fav),
-            ..existing
-        };
-        Ok(vikunjars::apis::task_api::tasks_id_post(&self.configuration, task_id, task).await?)
+    /// Write a whole task back. Vikunja treats omitted fields as empty, so
+    /// `task` must be a full, freshly read task with changes applied.
+    pub async fn update_task(&self, task: ModelsTask) -> Result<ModelsTask> {
+        let id = task
+            .id
+            .ok_or_else(|| VkError::other("Cannot update a task without an id"))?;
+        Ok(vikunjars::apis::task_api::tasks_id_post(&self.configuration, id, task).await?)
     }
 
     pub async fn login(
@@ -479,10 +525,28 @@ impl VikunjaAPI {
         vikunjars::apis::user_api::users_get(&self.configuration, Some(search)).await
     }
 
-    /// Resolve a username to a user id. Prefers an exact username match
-    /// over the search's first hit.
+    /// Resolve a user id (`5` or `#5`) or username. A username prefers an
+    /// exact match over the search's first hit.
     pub async fn find_user_id(&self, user: &str) -> Result<i32> {
-        let found = self.search_user(user).await?;
+        if let Ok(id) = user.trim_start_matches('#').parse() {
+            return Ok(id);
+        }
+        let found = self.search_user(user).await.map_err(|e| {
+            let err = VkError::from(e);
+            if err.kind == crate::error::Kind::Auth {
+                // API tokens are not allowed on the user routes.
+                VkError::new(
+                    err.kind,
+                    format!(
+                        "{}. If you log in with an API token, it cannot look up users by \
+                         name: pass the numeric user id instead.",
+                        err.message
+                    ),
+                )
+            } else {
+                err
+            }
+        })?;
         found
             .iter()
             .find(|u| u.username.as_deref() == Some(user))
@@ -513,16 +577,6 @@ impl VikunjaAPI {
         )
         .await?;
         Ok(())
-    }
-
-    pub async fn assign_to_task(&self, user: &str, task_id: i32) -> Result<()> {
-        let user_id = self.find_user_id(user).await?;
-        self.assign_user_id(user_id, task_id).await
-    }
-
-    pub async fn remove_assign_to_task(&self, user: &str, task_id: i32) -> Result<()> {
-        let user_id = self.find_user_id(user).await?;
-        self.unassign_user_id(user_id, task_id).await
     }
 
     pub async fn get_task_comments(
@@ -591,5 +645,89 @@ impl VikunjaAPI {
             relation,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task() -> ModelsTask {
+        ModelsTask {
+            id: Some(42),
+            title: Some("old".into()),
+            description: Some("<p>keep me</p>".into()),
+            priority: Some(2),
+            updated: Some("2026-09-29T10:00:00+02:00".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_edit_keeps_untouched_fields() {
+        let edited = TaskEdit {
+            title: Some("new".into()),
+            ..Default::default()
+        }
+        .apply(&task());
+        assert_eq!(edited.title.as_deref(), Some("new"));
+        assert_eq!(edited.description.as_deref(), Some("<p>keep me</p>"));
+        assert_eq!(edited.priority, Some(2));
+        assert_eq!(edited.id, Some(42));
+    }
+
+    #[test]
+    fn test_done_and_favorite_touch_only_their_fields() {
+        let done = with_done(&task(), true);
+        assert_eq!(done.done, Some(true));
+        assert!(done.done_at.is_some());
+        assert_eq!(done.description, task().description);
+
+        let fav = with_favorite(&task(), true);
+        assert_eq!(fav.is_favorite, Some(true));
+        assert_eq!(fav.title, task().title);
+    }
+
+    #[test]
+    fn test_unchanged_accepts_same_instant_in_any_offset() {
+        assert!(check_unchanged(&task(), "2026-09-29T10:00:00+02:00").is_ok());
+        assert!(check_unchanged(&task(), "2026-09-29T08:00:00Z").is_ok());
+    }
+
+    #[test]
+    fn test_changed_task_is_a_conflict() {
+        let err = check_unchanged(&task(), "2026-09-29T07:59:59Z").unwrap_err();
+        assert_eq!(err.kind, crate::error::Kind::Conflict);
+        assert!(err.message.contains("#42"));
+    }
+
+    #[test]
+    fn test_unparseable_expectation_is_a_usage_error() {
+        let err = check_unchanged(&task(), "yesterday").unwrap_err();
+        assert_eq!(err.kind, crate::error::Kind::Usage);
+    }
+
+    fn items() -> Vec<(i32, &'static str)> {
+        vec![(1, "Work"), (2, "Homework"), (3, "Workshop"), (4, "Music")]
+    }
+
+    #[test]
+    fn test_resolve_prefers_exact_title() {
+        assert_eq!(resolve_by_title(&items(), "work", "project").unwrap(), 1);
+    }
+
+    #[test]
+    fn test_resolve_accepts_single_partial_match() {
+        assert_eq!(resolve_by_title(&items(), "mus", "project").unwrap(), 4);
+    }
+
+    #[test]
+    fn test_resolve_rejects_ambiguous_and_missing() {
+        let err = resolve_by_title(&items(), "ork", "project").unwrap_err();
+        assert_eq!(err.kind, crate::error::Kind::Usage);
+        assert!(err.message.contains("Homework (#2)"));
+
+        let err = resolve_by_title(&items(), "nope", "project").unwrap_err();
+        assert_eq!(err.kind, crate::error::Kind::NotFound);
     }
 }
