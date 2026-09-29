@@ -167,7 +167,10 @@ impl Context {
             out.push_str(&format!("- {fact}\n"));
         }
 
-        let body = description::html_to_markdown(t.description.as_deref().unwrap_or(""));
+        // The checklist gets its own section below, so leave it out here.
+        let body = description::html_to_markdown(&without_task_lists(
+            t.description.as_deref().unwrap_or(""),
+        ));
         if !body.trim().is_empty() {
             out.push_str(&format!("\n## Description\n\n{}\n", body.trim()));
         }
@@ -215,6 +218,26 @@ impl Context {
 
         out
     }
+}
+
+/// Remove TipTap task lists (`<ul data-type="taskList">…</ul>`) from HTML.
+fn without_task_lists(html: &str) -> String {
+    const OPEN: &str = r#"<ul data-type="taskList">"#;
+    const CLOSE: &str = "</ul>";
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        match rest[start..].find(CLOSE) {
+            Some(end) => rest = &rest[start + end + CLOSE.len()..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn user_name(u: &UserUser) -> String {
@@ -296,6 +319,27 @@ mod tests {
         assert!(md.contains("## Comments (1)"));
         assert!(md.contains("### claude"));
         assert!(md.contains("On it."));
+    }
+
+    #[test]
+    fn test_checklist_is_not_repeated_in_description() {
+        let md = context().to_markdown();
+        assert!(md.contains("## Description\n\nContext here.\n"));
+        assert_eq!(md.matches("deploy").count(), 1);
+    }
+
+    #[test]
+    fn test_without_task_lists_keeps_other_html() {
+        let html =
+            r#"<p>a</p><ul data-type="taskList"><li>x</li></ul><p>b</p><ul><li>plain</li></ul>"#;
+        assert_eq!(
+            without_task_lists(html),
+            "<p>a</p><p>b</p><ul><li>plain</li></ul>"
+        );
+        assert_eq!(
+            without_task_lists(r#"<p>a</p><ul data-type="taskList"><li>x"#),
+            "<p>a</p>"
+        );
     }
 
     #[test]
