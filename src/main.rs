@@ -117,16 +117,55 @@ async fn login_cmd(arg: &LoginCmd, json: bool) -> Result<()> {
         format!("https://{}", arg.host)
     };
 
-    let api = VikunjaAPI::new(&host, "");
+    let token = match (&arg.token, &arg.username, &arg.password) {
+        (Some(token), None, None) => token.clone(),
+        (None, Some(username), Some(password)) => {
+            VikunjaAPI::new(&host, "")
+                .login(username, password, arg.totp.clone())
+                .await?
+        }
+        _ => {
+            return Err(VkError::usage(
+                "Log in with either --token, or --username and --password",
+            ))
+        }
+    };
 
-    let token = api
-        .login(&arg.username, &arg.password, arg.totp.clone())
-        .await?;
-    let config = format!("host = \"{host}\"\ntoken = \"{token}\"");
+    // Check the credentials work before saving them, and remember who they
+    // belong to so `vk claim` never has to ask again. API tokens are refused
+    // on /user, so they rely on --user-id.
+    let api = VikunjaAPI::new(&host, &token);
+    let user_id = match arg.user_id {
+        Some(id) => {
+            api.get_all_projects().await?;
+            Some(id)
+        }
+        None => match api.current_user().await {
+            Ok(user) => user.id,
+            Err(e) if e.kind == error::Kind::Auth && arg.token.is_some() => {
+                api.get_all_projects().await?;
+                None
+            }
+            Err(e) => return Err(e),
+        },
+    };
 
-    std::fs::write(CONFIG_PATH.clone(), config)?;
+    let config = config::Config {
+        host: host.clone(),
+        token,
+        user_id,
+    };
+    let content = toml::to_string(&config)
+        .map_err(|e| VkError::other(format!("Could not write config: {e}")))?;
+    std::fs::write(CONFIG_PATH.clone(), content)?;
+
     if json {
-        print_json(&serde_json::json!({ "host": host }))?;
+        print_json(&serde_json::json!({ "host": host, "user_id": user_id }))?;
+    } else if user_id.is_none() {
+        println!(
+            "Logged in. This API token cannot tell vk which user it belongs to: pass \
+             --user-id to use `vk claim` and `vk --mine`."
+        );
     }
     Ok(())
 }

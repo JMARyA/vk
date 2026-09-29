@@ -287,25 +287,34 @@ pub struct TaskNewCmd {
     pub dry_run: bool,
 }
 
-/// Get a JWT Token for authentication
+/// Log in with a username and password, or save an API token
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "login")]
 pub struct LoginCmd {
-    /// username
-    #[argh(option)]
-    pub username: String,
-
-    /// password
-    #[argh(option)]
-    pub password: String,
-
     /// vikunja host
     #[argh(option)]
     pub host: String,
 
+    /// username (with --password)
+    #[argh(option)]
+    pub username: Option<String>,
+
+    /// password (with --username)
+    #[argh(option)]
+    pub password: Option<String>,
+
     /// TOTP code
     #[argh(option)]
     pub totp: Option<String>,
+
+    /// use this API token instead of a username and password
+    #[argh(option)]
+    pub token: Option<String>,
+
+    /// your numeric user id, for `vk claim`; found automatically for
+    /// password logins, but API tokens cannot look it up
+    #[argh(option)]
+    pub user_id: Option<i32>,
 }
 
 /// Assign a user to a task

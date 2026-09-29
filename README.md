@@ -25,11 +25,14 @@ vk login --host vikunja.example.com --username user --password pass
 vk login --host vikunja.example.com --username user --password pass --totp 123456
 ```
 
-Or set up the config manually with an API token:
-```toml
-host  = "https://vikunja.example.com"
-token = "your-api-token"
+Or with an API token. API tokens cannot tell vk which user they belong to, so
+pass your user id too (needed for `vk claim` and `vk --mine`):
+```shell
+vk login --host vikunja.example.com --token tk_... --user-id 1
 ```
+
+Both check the credentials before saving them. A password login records your
+user id by itself.
 
 ## Usage
 
@@ -178,9 +181,9 @@ Claiming a task you already hold, or releasing one you don't, succeeds without
 changing anything, so retries are safe. If two agents claim the same task at
 the same moment, the one with the lower user id keeps it.
 
-vk needs to know which user it acts as. Password logins work this out
-themselves. API tokens cannot, so set `user_id` in the config (or `VK_USER_ID`
-per agent). Your id is `created_by.id` on a task you created:
+vk needs to know which user it acts as. `vk login` saves it for password
+logins; API tokens need `--user-id` at login (or `VK_USER_ID`, e.g. one per
+agent). Your id is `created_by.id` on a task you created:
 `vk info <id> --json`.
 
 ## Configuration
