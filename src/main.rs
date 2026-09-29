@@ -2,21 +2,85 @@ mod api;
 mod args;
 mod config;
 mod description;
+mod error;
 mod sync;
 mod ui;
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use api::{ProjectID, Relation, VikunjaAPI};
+use error::{Result, VkError};
 use once_cell::sync::Lazy;
-use ui::{hex_to_color, print_color};
+use serde::Serialize;
+use ui::hex_to_color;
 
-use crate::args::{LabelCmds, LoginCmd, ProjectCmds, VkCommands};
+use crate::args::{LabelCmds, LoginCmd, ProjectCmds, VkCLI, VkCommands};
 
 static CONFIG_PATH: Lazy<PathBuf> =
     Lazy::new(|| dirs::home_dir().unwrap().join(".config").join("vk.toml"));
 
-async fn login_cmd(arg: &LoginCmd) {
+/// Print a value as one line of JSON on stdout.
+fn print_json<T: Serialize + ?Sized>(value: &T) -> Result<()> {
+    let line = serde_json::to_string(value)
+        .map_err(|e| VkError::other(format!("Could not encode output: {e}")))?;
+    println!("{line}");
+    Ok(())
+}
+
+/// Output for a command that removed something.
+#[derive(Serialize)]
+struct Deleted<T: Serialize> {
+    deleted: T,
+}
+
+/// Refuse to start a full-screen or editor flow when there is no one at the
+/// terminal, or when the caller asked for JSON.
+fn require_interactive(what: &str, json: bool) -> Result<()> {
+    if json {
+        return Err(VkError::usage(format!(
+            "{what} is interactive and has no JSON output"
+        )));
+    }
+    if !std::io::stdout().is_terminal() || !std::io::stdin().is_terminal() {
+        return Err(VkError::usage(format!(
+            "{what} needs an interactive terminal"
+        )));
+    }
+    Ok(())
+}
+
+fn parse_due(input: &str) -> Result<String> {
+    parse_datetime(input)
+        .map(|d| d.to_rfc3339())
+        .ok_or_else(|| VkError::usage(format!("Could not parse date '{input}'")))
+}
+
+fn parse_priority(input: &str) -> Result<i32> {
+    input
+        .trim()
+        .parse()
+        .map_err(|_| VkError::usage(format!("Priority must be a number, got '{input}'")))
+}
+
+/// Open `$EDITOR` on `initial` and return what was saved.
+fn edit_in_editor(name: &str, initial: &str) -> Result<String> {
+    let tmp_path = std::env::temp_dir().join(name);
+    std::fs::write(&tmp_path, initial)?;
+
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let status = std::process::Command::new(&editor).arg(&tmp_path).status();
+    let text = std::fs::read_to_string(&tmp_path);
+    std::fs::remove_file(&tmp_path).ok();
+
+    match status {
+        Ok(s) if s.success() => Ok(text?),
+        Ok(s) => Err(VkError::other(format!("{editor} exited with {s}"))),
+        Err(e) => Err(VkError::other(format!("Could not start {editor}: {e}"))),
+    }
+}
+
+async fn login_cmd(arg: &LoginCmd, json: bool) -> Result<()> {
     let host = if arg.host.starts_with("http") {
         arg.host.to_string()
     } else {
@@ -27,123 +91,123 @@ async fn login_cmd(arg: &LoginCmd) {
 
     let token = api
         .login(&arg.username, &arg.password, arg.totp.clone())
-        .await;
+        .await?;
     let config = format!("host = \"{host}\"\ntoken = \"{token}\"");
 
-    std::fs::write(CONFIG_PATH.clone(), config).unwrap();
-    std::process::exit(0);
+    std::fs::write(CONFIG_PATH.clone(), config)?;
+    if json {
+        print_json(&serde_json::json!({ "host": host }))?;
+    }
+    Ok(())
 }
 
-async fn project_commands(arg: ProjectCmds, api: &VikunjaAPI) {
+async fn project_commands(arg: ProjectCmds, api: &VikunjaAPI, json: bool) -> Result<()> {
     match arg.cmd {
-        args::ProjectCommands::List(cmd) => {
-            if cmd.json {
-                let projects = api.get_all_projects().await.unwrap();
-                println!("{}", serde_json::to_string(&projects).unwrap());
+        args::ProjectCommands::List(_) => {
+            if json {
+                print_json(&api.get_all_projects().await?)
             } else {
-                ui::project::list_projects(api).await;
+                ui::project::list_projects(api).await
             }
         }
         args::ProjectCommands::Add(project_add_cmd) => {
-            let parent = if let Some(parent) = project_add_cmd.parent {
-                Some(ProjectID::parse(api, &parent).await.unwrap())
-            } else {
-                None
+            let parent = match project_add_cmd.parent {
+                Some(parent) => Some(ProjectID::parse(api, &parent).await?),
+                None => None,
             };
 
-            api.new_project(
-                &project_add_cmd.title,
-                project_add_cmd.description,
-                project_add_cmd.color,
-                parent,
-            )
-            .await
-            .unwrap();
+            let project = api
+                .new_project(
+                    &project_add_cmd.title,
+                    project_add_cmd.description,
+                    project_add_cmd.color,
+                    parent,
+                )
+                .await?;
+            if json {
+                print_json(&project)?;
+            }
+            Ok(())
         }
         args::ProjectCommands::Remove(project_remove_cmd) => {
-            api.delete_project(
-                &ProjectID::parse(api, &project_remove_cmd.project)
-                    .await
-                    .unwrap(),
-            )
-            .await;
+            let project = ProjectID::parse(api, &project_remove_cmd.project).await?;
+            api.delete_project(&project).await?;
+            if json {
+                print_json(&Deleted {
+                    deleted: serde_json::json!({ "project": project.0 }),
+                })?;
+            }
+            Ok(())
         }
     }
 }
 
-async fn label_commands(arg: LabelCmds, api: &VikunjaAPI) {
+async fn label_commands(arg: LabelCmds, api: &VikunjaAPI, json: bool) -> Result<()> {
     match arg.cmd {
-        args::LabelCommands::List(cmd) => {
-            if cmd.json {
-                let labels = api.get_all_labels().await;
-                println!("{}", serde_json::to_string(&labels).unwrap());
+        args::LabelCommands::List(_) => {
+            if json {
+                print_json(&api.get_all_labels().await?)
             } else {
-                ui::print_all_labels(api).await;
+                ui::print_all_labels(api).await
             }
         }
         args::LabelCommands::New(label_new_cmd) => {
             if let Some(color) = &label_new_cmd.color {
                 if hex_to_color(color).is_err() {
-                    print_color(
-                        crossterm::style::Color::Red,
-                        &format!("'{color}' is no hex color"),
-                    );
-                    println!();
-                    std::process::exit(1);
+                    return Err(VkError::usage(format!("'{color}' is no hex color")));
                 }
             }
 
-            api.new_label(
-                &label_new_cmd.title,
-                label_new_cmd.description,
-                label_new_cmd.color,
-            )
-            .await
-            .unwrap();
+            let label = api
+                .new_label(
+                    &label_new_cmd.title,
+                    label_new_cmd.description,
+                    label_new_cmd.color,
+                )
+                .await?;
+            if json {
+                print_json(&label)?;
+            }
+            Ok(())
         }
         args::LabelCommands::Remove(label_remove_cmd) => {
-            api.remove_label(&label_remove_cmd.title).await;
+            let label = api.remove_label(&label_remove_cmd.title).await?;
+            if json {
+                print_json(&Deleted {
+                    deleted: serde_json::json!({ "label": label.id }),
+                })?;
+            }
+            Ok(())
         }
     }
 }
 
-async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
-    use std::io::IsTerminal;
+/// Keep tasks carrying a label with exactly this (trimmed) title.
+fn retain_label(tasks: &mut Vec<vikunjars::models::ModelsTask>, label: &str) {
+    tasks.retain(|x| {
+        x.labels.as_ref().is_some_and(|labels| {
+            labels
+                .iter()
+                .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
+        })
+    });
+}
 
-    if !std::io::stdout().is_terminal() {
-        print_color(
-            crossterm::style::Color::Red,
-            "vk timeline needs an interactive terminal",
-        );
-        println!();
-        std::process::exit(1);
-    }
+async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI, json: bool) -> Result<()> {
+    require_interactive("vk timeline", json)?;
 
-    let mut tasks = api.get_all_tasks().await;
-    let projects = api.get_all_projects().await.unwrap_or_default();
+    let mut tasks = api.get_all_tasks().await?;
+    let projects = api.get_all_projects().await?;
 
     if !cmd.done {
         tasks.retain(|x| !x.done.unwrap_or_default());
     }
     if let Some(project) = &cmd.project {
-        let Some(p_id) = ProjectID::parse(api, project).await else {
-            print_color(
-                crossterm::style::Color::Red,
-                &format!("Unknown project '{project}'"),
-            );
-            println!();
-            std::process::exit(1);
-        };
+        let p_id = ProjectID::parse(api, project).await?;
         tasks.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
     }
     if let Some(label) = &cmd.label {
-        tasks.retain(|x| {
-            x.labels.as_ref().is_some_and(|labels| {
-                labels
-                    .iter()
-                    .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
-            })
-        });
+        retain_label(&mut tasks, label);
     }
 
     let entries: Vec<ui::timeline::Entry> = tasks
@@ -155,34 +219,30 @@ async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
 
     if entries.is_empty() {
         println!("No tasks to show.");
-        return;
+        return Ok(());
     }
 
     match ui::timeline::run_timeline(entries, cmd.sort, hidden) {
         Ok(Some(id)) => ui::task::print_task_info(id, api).await,
-        Ok(None) => {}
-        Err(e) => {
-            print_color(
-                crossterm::style::Color::Red,
-                &format!("Terminal error: {e}"),
-            );
-            println!();
-            std::process::exit(1);
-        }
+        Ok(None) => Ok(()),
+        Err(e) => Err(VkError::other(format!("Terminal error: {e}"))),
     }
 }
 
-fn load_config() -> config::Config {
-    let content = &std::fs::read_to_string(CONFIG_PATH.clone()).unwrap_or_else(|e| {
-        ui::print_color(
-            crossterm::style::Color::Red,
-            &format!("Could not read config file: {e}"),
-        );
-        println!("\nTo setup vk run `vk login --help`");
-        std::process::exit(1);
-    });
+fn load_config() -> Result<config::Config> {
+    let content = std::fs::read_to_string(CONFIG_PATH.clone()).map_err(|e| {
+        VkError::new(
+            error::Kind::Auth,
+            format!("Could not read config file: {e}\nTo setup vk run `vk login --help`"),
+        )
+    })?;
 
-    toml::from_str(content).unwrap()
+    toml::from_str(&content).map_err(|e| {
+        VkError::usage(format!(
+            "Invalid config file {}: {e}",
+            CONFIG_PATH.display()
+        ))
+    })
 }
 
 fn parse_datetime(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -224,312 +284,308 @@ fn parse_datetime(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 
 #[tokio::main]
 async fn main() {
-    let arg = args::get_args();
+    let (arg, json) = args::get_args();
 
-    if let Some(VkCommands::Login(arg)) = &arg.cmd {
-        login_cmd(arg).await;
+    if let Err(e) = run(arg, json).await {
+        e.report(json);
+        std::process::exit(e.kind.exit_code());
+    }
+}
+
+/// Print a task: as JSON, or re-fetched and shown in full.
+async fn show_task(
+    task: &vikunjars::models::ModelsTask,
+    api: &VikunjaAPI,
+    json: bool,
+) -> Result<()> {
+    if json {
+        print_json(task)
+    } else {
+        ui::task::print_task_info(task.id.unwrap_or_default(), api).await
+    }
+}
+
+/// Like [`show_task`] for commands whose API call does not return the task.
+async fn show_task_id(task_id: i32, api: &VikunjaAPI, json: bool) -> Result<()> {
+    if json {
+        print_json(&api.get_task(task_id).await?)
+    } else {
+        ui::task::print_task_info(task_id, api).await
+    }
+}
+
+async fn run(arg: VkCLI, json: bool) -> Result<()> {
+    if let Some(VkCommands::Login(login)) = &arg.cmd {
+        return login_cmd(login, json).await;
     }
 
-    let config = load_config();
+    let config = load_config()?;
     let api = VikunjaAPI::new(&config.host, &config.token);
 
-    if let Some(subcommand) = arg.cmd {
-        match subcommand {
-            VkCommands::Sync(sync_cmd) => {
-                let opts = sync::SyncOptions {
-                    output: sync_cmd.output.into(),
-                    projects: sync_cmd.project,
-                    include_done: sync_cmd.done,
-                    include_archived: sync_cmd.archived,
-                    dry_run: sync_cmd.dry_run,
-                };
+    let Some(subcommand) = arg.cmd else {
+        return list_tasks(&api, arg.done, arg.favorite, arg.from, arg.label, json).await;
+    };
 
-                let stats = sync::fetch_local(&opts, &api).await;
-                if stats.errors > 0 {
-                    std::process::exit(1);
-                }
+    match subcommand {
+        VkCommands::Sync(sync_cmd) => {
+            let opts = sync::SyncOptions {
+                output: sync_cmd.output.into(),
+                projects: sync_cmd.project,
+                include_done: sync_cmd.done,
+                include_archived: sync_cmd.archived,
+                dry_run: sync_cmd.dry_run,
+                quiet: json,
+            };
+
+            let stats = sync::fetch_local(&opts, &api).await;
+            if json {
+                print_json(&stats)?;
             }
-            VkCommands::TaskInfo(task_info_cmd) => {
-                if !task_info_cmd.json {
-                    ui::task::print_task_info(task_info_cmd.task_id, &api).await;
-                    return;
-                }
-
-                // json
-                let task = api
-                    .get_task(task_info_cmd.task_id)
-                    .await
-                    .unwrap_or_else(|_| {
-                        print_color(
-                            crossterm::style::Color::Red,
-                            &format!("Could not get task #{}", task_info_cmd.task_id),
-                        );
-                        println!();
-                        std::process::exit(1);
-                    });
-
-                println!("{}", serde_json::to_string(&task).unwrap());
+            if stats.errors > 0 {
+                return Err(VkError::other(format!(
+                    "{} sync operation(s) failed",
+                    stats.errors
+                )));
             }
-            VkCommands::TaskEdit(task_edit_cmd) => {
-                let no_flags = task_edit_cmd.title.is_none()
-                    && task_edit_cmd.description.is_none()
-                    && task_edit_cmd.due.is_none()
-                    && task_edit_cmd.priority.is_none();
+            Ok(())
+        }
+        VkCommands::TaskInfo(task_info_cmd) => {
+            show_task_id(task_info_cmd.task_id, &api, json).await
+        }
+        VkCommands::TaskEdit(task_edit_cmd) => {
+            let no_flags = task_edit_cmd.title.is_none()
+                && task_edit_cmd.description.is_none()
+                && task_edit_cmd.due.is_none()
+                && task_edit_cmd.priority.is_none();
 
-                let description = if no_flags {
-                    let existing = api.get_task(task_edit_cmd.task_id).await.unwrap();
-                    let current_html = existing.description.clone().unwrap_or_default();
-                    let current_md = description::html_to_markdown(&current_html);
+            let description = if no_flags {
+                require_interactive(
+                    "vk edit without --title/--description/--due/--priority",
+                    json,
+                )?;
+                let existing = api.get_task(task_edit_cmd.task_id).await?;
+                let current_html = existing.description.clone().unwrap_or_default();
+                let current_md = description::html_to_markdown(&current_html);
 
-                    let tmp_path =
-                        std::env::temp_dir().join(format!("vk_edit_{}.md", task_edit_cmd.task_id));
-                    std::fs::write(&tmp_path, &current_md).unwrap();
+                let new_md = edit_in_editor(
+                    &format!("vk_edit_{}.md", task_edit_cmd.task_id),
+                    &current_md,
+                )?;
+                if new_md == current_md {
+                    return Ok(());
+                }
+                Some(description::markdown_to_html(&new_md))
+            } else {
+                task_edit_cmd
+                    .description
+                    .map(|d| description::markdown_to_html(&d))
+            };
 
-                    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-                    std::process::Command::new(editor)
-                        .arg(&tmp_path)
-                        .status()
-                        .unwrap();
+            let due_date = task_edit_cmd.due.as_deref().map(parse_due).transpose()?;
+            let priority = task_edit_cmd
+                .priority
+                .as_deref()
+                .map(parse_priority)
+                .transpose()?;
 
-                    let new_md = std::fs::read_to_string(&tmp_path).unwrap();
-                    std::fs::remove_file(&tmp_path).ok();
-
-                    if new_md == current_md {
-                        return;
-                    }
-                    Some(description::markdown_to_html(&new_md))
-                } else {
-                    task_edit_cmd
-                        .description
-                        .map(|d| description::markdown_to_html(&d))
-                };
-
-                let due_date = task_edit_cmd.due.map(|x| {
-                    if let Some(parsed) = parse_datetime(&x) {
-                        parsed.to_rfc3339()
-                    } else {
-                        print_color(crossterm::style::Color::Red, "Failed to parse due date");
-                        println!();
-                        std::process::exit(1);
-                    }
-                });
-                api.edit_task(
+            let task = api
+                .edit_task(
                     task_edit_cmd.task_id,
                     task_edit_cmd.title,
                     description,
                     due_date,
-                    task_edit_cmd.priority.map(|x| x.parse().unwrap()),
+                    priority,
                 )
-                .await
-                .unwrap();
-                ui::task::print_task_info(task_edit_cmd.task_id, &api).await;
-            }
-            VkCommands::TaskRemove(task_remove_cmd) => {
-                api.delete_task(task_remove_cmd.task_id).await;
-            }
-            VkCommands::TaskDone(task_done_cmd) => {
-                let task_id = task_done_cmd.task_id;
-                let done = !task_done_cmd.undo;
-                api.done_task(task_id, done).await.unwrap();
-                ui::task::print_task_info(task_id, &api).await;
-            }
-            VkCommands::TaskNew(task_new_cmd) => {
-                let title = task_new_cmd.title;
-                let project = &task_new_cmd.project;
-                let project = ProjectID::parse(&api, project).await.unwrap();
-                let description: Option<String> = task_new_cmd
-                    .description
-                    .map(|d| description::markdown_to_html(&d));
-                let due_date: Option<String> = task_new_cmd.due;
-                let due_date = due_date.map(|x| {
-                    if let Some(parsed) = parse_datetime(&x) {
-                        parsed.to_rfc3339()
-                    } else {
-                        print_color(crossterm::style::Color::Red, "Failed to parse due date");
-                        println!();
-                        std::process::exit(1);
-                    }
-                });
-
-                let label: Option<String> = task_new_cmd.label;
-                let priority: Option<String> = task_new_cmd.priority;
-                let fav = task_new_cmd.favorite;
-                // todo : add args
-
-                let task = api
-                    .new_task(
-                        title.as_str(),
-                        &project,
-                        description,
-                        due_date,
-                        fav,
-                        label,
-                        priority.map(|x| x.parse().unwrap()),
-                    )
-                    .await;
-                if let Err(msg) = task {
-                    print_color(crossterm::style::Color::Red, &msg);
-                    println!();
-                    std::process::exit(1);
-                } else {
-                    ui::task::print_task_info(task.unwrap().id.unwrap() as i32, &api).await;
-                }
-            }
-            VkCommands::TaskAssign(task_assign_cmd) => {
-                if task_assign_cmd.undo {
-                    api.remove_assign_to_task(&task_assign_cmd.user, task_assign_cmd.task_id)
-                        .await;
-                } else if let Err(msg) = api
-                    .assign_to_task(&task_assign_cmd.user, task_assign_cmd.task_id)
-                    .await
-                {
-                    print_color(crossterm::style::Color::Red, &msg);
-                    println!();
-                }
-            }
-            VkCommands::TaskComments(task_comments_cmd) => {
-                let comments = api
-                    .get_task_comments(task_comments_cmd.task_id)
-                    .await
-                    .unwrap();
-
-                if task_comments_cmd.json {
-                    println!("{}", serde_json::to_string(&comments).unwrap());
-                } else {
-                    for comment in comments {
-                        ui::task::print_comment(&comment);
-                    }
-                }
-            }
-            VkCommands::TaskComment(task_comment_cmd) => {
-                let text = match task_comment_cmd.comment {
-                    Some(t) => t,
-                    None => {
-                        let tmp_path = std::env::temp_dir()
-                            .join(format!("vk_comment_{}.md", task_comment_cmd.task_id));
-                        std::fs::write(&tmp_path, "").unwrap();
-                        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-                        std::process::Command::new(editor)
-                            .arg(&tmp_path)
-                            .status()
-                            .unwrap();
-                        let t = std::fs::read_to_string(&tmp_path).unwrap();
-                        std::fs::remove_file(&tmp_path).ok();
-                        t
-                    }
-                };
-                if !text.trim().is_empty() {
-                    api.new_comment(
-                        task_comment_cmd.task_id,
-                        description::markdown_to_html(&text),
-                    )
-                    .await
-                    .unwrap();
-                }
-            }
-            VkCommands::TaskRelation(task_relation_cmd) => {
-                let task_id = task_relation_cmd.task_id;
-                let relation = &task_relation_cmd.relation;
-                let sec_task_id = task_relation_cmd.second_task_id;
-                let delete = task_relation_cmd.delete;
-
-                let relation = Relation::try_parse(relation).unwrap();
-
-                if delete {
-                    api.remove_relation(task_id, &relation, sec_task_id).await;
-                } else {
-                    api.add_relation(task_id, &relation, sec_task_id)
-                        .await
-                        .unwrap();
-                }
-
-                ui::task::print_task_info(task_id, &api).await;
-            }
-            VkCommands::TaskLabel(task_label_cmd) => {
-                if task_label_cmd.undo {
-                    api.label_task_remove(&task_label_cmd.label, task_label_cmd.task_id)
-                        .await;
-                } else if let Err(msg) = api
-                    .label_task(&task_label_cmd.label, task_label_cmd.task_id)
-                    .await
-                {
-                    let msg = format!("API Error: {msg}");
-                    print_color(crossterm::style::Color::Red, &msg);
-                    println!();
-                    std::process::exit(1);
-                }
-                ui::task::print_task_info(task_label_cmd.task_id, &api).await;
-            }
-            VkCommands::TaskFav(task_fav_cmd) => {
-                api.fav_task(task_fav_cmd.task_id, !task_fav_cmd.undo)
-                    .await
-                    .unwrap();
-                ui::task::print_task_info(task_fav_cmd.task_id, &api).await;
-            }
-
-            VkCommands::TaskCheck(cmd) => {
-                let task_id = cmd.task_id;
-                let task = api.get_task(task_id).await.unwrap_or_else(|_| {
-                    print_color(
-                        crossterm::style::Color::Red,
-                        &format!("Could not get task #{task_id}"),
-                    );
-                    println!();
-                    std::process::exit(1);
-                });
-                let html = task.description.clone().unwrap_or_default();
-                let mut items = description::parse_task_items(&html);
-                if items.is_empty() {
-                    print_color(crossterm::style::Color::Yellow, "No subtasks found");
-                    println!();
-                    return;
-                }
-                let changed = ui::check::run_check_tui(&mut items);
-                if changed {
-                    let states: Vec<bool> = items.iter().map(|(c, _)| *c).collect();
-                    let new_html = description::apply_task_item_states(&html, &states);
-                    api.edit_task(task_id, None, Some(new_html), None, None)
-                        .await
-                        .unwrap();
-                }
-                ui::task::print_task_info(task_id, &api).await;
-            }
-            VkCommands::Timeline(cmd) => timeline(cmd, &api).await,
-            VkCommands::Stats(_) => {
-                ui::stats::print_stats(&api, &config).await;
-            }
-            VkCommands::Login(_) => unreachable!(),
-            VkCommands::ProjectCmds(project_cmds) => project_commands(project_cmds, &api).await,
-            VkCommands::Labels(label_cmds) => label_commands(label_cmds, &api).await,
+                .await?;
+            show_task(&task, &api, json).await
         }
-    } else if arg.json {
-        let has_filters = arg.from.is_some() || arg.label.is_some();
-        let mut tasks = if has_filters {
-            api.get_all_tasks().await
-        } else {
-            api.get_latest_tasks().await.unwrap()
-        };
-        if !arg.done {
-            tasks.retain(|x| !x.done.unwrap_or_default());
+        VkCommands::TaskRemove(task_remove_cmd) => {
+            api.delete_task(task_remove_cmd.task_id).await?;
+            if json {
+                print_json(&Deleted {
+                    deleted: serde_json::json!({ "task": task_remove_cmd.task_id }),
+                })?;
+            }
+            Ok(())
         }
-        if arg.favorite {
-            tasks.retain(|x| x.is_favorite.unwrap_or_default());
+        VkCommands::TaskDone(task_done_cmd) => {
+            let task = api
+                .done_task(task_done_cmd.task_id, !task_done_cmd.undo)
+                .await?;
+            show_task(&task, &api, json).await
         }
-        if let Some(from) = arg.from {
-            let p_id = ProjectID::parse(&api, &from).await.unwrap();
-            tasks.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
+        VkCommands::TaskNew(task_new_cmd) => {
+            let project = ProjectID::parse(&api, &task_new_cmd.project).await?;
+            let description = task_new_cmd
+                .description
+                .map(|d| description::markdown_to_html(&d));
+            let due_date = task_new_cmd.due.as_deref().map(parse_due).transpose()?;
+            let priority = task_new_cmd
+                .priority
+                .as_deref()
+                .map(parse_priority)
+                .transpose()?;
+
+            let task = api
+                .new_task(
+                    &task_new_cmd.title,
+                    &project,
+                    description,
+                    due_date,
+                    task_new_cmd.favorite,
+                    task_new_cmd.label,
+                    priority,
+                )
+                .await?;
+            show_task(&task, &api, json).await
         }
-        if let Some(label) = arg.label {
-            tasks.retain(|x| {
-                x.labels.as_ref().is_some_and(|labels| {
-                    labels
-                        .iter()
-                        .any(|l| l.title.as_deref().unwrap_or("").trim() == label)
-                })
-            });
+        VkCommands::TaskAssign(task_assign_cmd) => {
+            let task_id = task_assign_cmd.task_id;
+            if task_assign_cmd.undo {
+                api.remove_assign_to_task(&task_assign_cmd.user, task_id)
+                    .await?;
+            } else {
+                api.assign_to_task(&task_assign_cmd.user, task_id).await?;
+            }
+            if json {
+                print_json(&api.get_task(task_id).await?)?;
+            }
+            Ok(())
         }
-        println!("{}", serde_json::to_string(&tasks).unwrap());
-    } else {
-        ui::task::print_current_tasks(&api, arg.done, arg.favorite, arg.from, arg.label).await;
+        VkCommands::TaskComments(task_comments_cmd) => {
+            let comments = api.get_task_comments(task_comments_cmd.task_id).await?;
+
+            if json {
+                print_json(&comments)?;
+            } else {
+                for comment in comments {
+                    ui::task::print_comment(&comment);
+                }
+            }
+            Ok(())
+        }
+        VkCommands::TaskComment(task_comment_cmd) => {
+            let text = match task_comment_cmd.comment {
+                Some(t) => t,
+                None => {
+                    require_interactive("vk comment without text", json)?;
+                    edit_in_editor(&format!("vk_comment_{}.md", task_comment_cmd.task_id), "")?
+                }
+            };
+            if text.trim().is_empty() {
+                return Err(VkError::usage("Comment is empty"));
+            }
+            let comment = api
+                .new_comment(
+                    task_comment_cmd.task_id,
+                    description::markdown_to_html(&text),
+                )
+                .await?;
+            if json {
+                print_json(&comment)?;
+            }
+            Ok(())
+        }
+        VkCommands::TaskRelation(task_relation_cmd) => {
+            let task_id = task_relation_cmd.task_id;
+            let sec_task_id = task_relation_cmd.second_task_id;
+            let relation = Relation::try_parse(&task_relation_cmd.relation).ok_or_else(|| {
+                VkError::usage(format!(
+                    "Unknown relation '{}'. Use one of: subtask (sub), parenttask (parent), related, \
+                     duplicateof, duplicates, blocking, blocked, precedes, follows, copiedfrom, copiedto",
+                    task_relation_cmd.relation
+                ))
+            })?;
+
+            if task_relation_cmd.delete {
+                api.remove_relation(task_id, &relation, sec_task_id).await?;
+            } else {
+                api.add_relation(task_id, &relation, sec_task_id).await?;
+            }
+
+            show_task_id(task_id, &api, json).await
+        }
+        VkCommands::TaskLabel(task_label_cmd) => {
+            if task_label_cmd.undo {
+                api.label_task_remove(&task_label_cmd.label, task_label_cmd.task_id)
+                    .await?;
+            } else {
+                api.label_task(&task_label_cmd.label, task_label_cmd.task_id)
+                    .await?;
+            }
+            show_task_id(task_label_cmd.task_id, &api, json).await
+        }
+        VkCommands::TaskFav(task_fav_cmd) => {
+            let task = api
+                .fav_task(task_fav_cmd.task_id, !task_fav_cmd.undo)
+                .await?;
+            show_task(&task, &api, json).await
+        }
+        VkCommands::TaskCheck(cmd) => {
+            require_interactive("vk check", json)?;
+            let task_id = cmd.task_id;
+            let task = api.get_task(task_id).await?;
+            let html = task.description.clone().unwrap_or_default();
+            let mut items = description::parse_task_items(&html);
+            if items.is_empty() {
+                return Err(VkError::not_found(format!(
+                    "Task #{task_id} has no checklist items"
+                )));
+            }
+            if ui::check::run_check_tui(&mut items) {
+                let states: Vec<bool> = items.iter().map(|(c, _)| *c).collect();
+                let new_html = description::apply_task_item_states(&html, &states);
+                api.edit_task(task_id, None, Some(new_html), None, None)
+                    .await?;
+            }
+            ui::task::print_task_info(task_id, &api).await
+        }
+        VkCommands::Timeline(cmd) => timeline(cmd, &api, json).await,
+        VkCommands::Stats(_) => {
+            if json {
+                return Err(VkError::usage(
+                    "vk stats has no JSON output; use `vk --json` or `vk prj ls --json`",
+                ));
+            }
+            ui::stats::print_stats(&api, &config).await
+        }
+        VkCommands::Login(_) => unreachable!(),
+        VkCommands::ProjectCmds(project_cmds) => project_commands(project_cmds, &api, json).await,
+        VkCommands::Labels(label_cmds) => label_commands(label_cmds, &api, json).await,
     }
+}
+
+/// `vk` with no subcommand: the task list.
+async fn list_tasks(
+    api: &VikunjaAPI,
+    done: bool,
+    favorite: bool,
+    from: Option<String>,
+    label: Option<String>,
+    json: bool,
+) -> Result<()> {
+    if !json {
+        return ui::task::print_current_tasks(api, done, favorite, from, label).await;
+    }
+
+    let has_filters = from.is_some() || label.is_some();
+    let mut tasks = if has_filters {
+        api.get_all_tasks().await?
+    } else {
+        api.get_latest_tasks().await?
+    };
+    if !done {
+        tasks.retain(|x| !x.done.unwrap_or_default());
+    }
+    if favorite {
+        tasks.retain(|x| x.is_favorite.unwrap_or_default());
+    }
+    if let Some(from) = from {
+        let p_id = ProjectID::parse(api, &from).await?;
+        tasks.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
+    }
+    if let Some(label) = label {
+        retain_label(&mut tasks, &label);
+    }
+    print_json(&tasks)
 }

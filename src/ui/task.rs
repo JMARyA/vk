@@ -191,11 +191,11 @@ pub async fn print_current_tasks(
     fav: bool,
     project: Option<String>,
     label: Option<String>,
-) {
+) -> crate::error::Result<()> {
     let current_tasks = if project.is_some() || label.is_some() {
-        api.get_all_tasks().await
+        api.get_all_tasks().await?
     } else {
-        api.get_latest_tasks().await.unwrap()
+        api.get_latest_tasks().await?
     };
 
     let mut selection: Vec<_> = if done {
@@ -219,7 +219,7 @@ pub async fn print_current_tasks(
     let show_project = project.is_none();
 
     if let Some(project) = project {
-        let p_id = ProjectID::parse(api, &project).await.unwrap();
+        let p_id = ProjectID::parse(api, &project).await?;
         selection.retain(|x| x.project_id.unwrap_or_default() == p_id.0 as i32);
     }
 
@@ -236,20 +236,14 @@ pub async fn print_current_tasks(
         });
     }
 
-    let projects = api.get_all_projects().await.unwrap();
+    let projects = api.get_all_projects().await?;
 
     print_task_list(&selection, &projects, show_project);
+    Ok(())
 }
 
-pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) {
-    let task = api.get_task(task_id).await.unwrap_or_else(|_| {
-        print_color(
-            crossterm::style::Color::Red,
-            &format!("Could not get task #{task_id}"),
-        );
-        println!();
-        std::process::exit(1);
-    });
+pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) -> crate::error::Result<()> {
+    let task = api.get_task(task_id).await?;
 
     let term_width = crossterm::terminal::size()
         .map(|(w, _)| w as usize)
@@ -428,6 +422,7 @@ pub async fn print_task_info(task_id: i32, api: &VikunjaAPI) {
         println!("{}", "─".repeat(term_width));
         print_description(&desc);
     }
+    Ok(())
 }
 
 pub fn print_comment(comment: &ModelsTaskComment) {
