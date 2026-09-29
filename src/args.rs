@@ -76,7 +76,7 @@ pub struct SyncCmd {
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
-/// Show tasks on a timeline by their start, end, due and done dates
+/// Show tasks on a timeline by their dates
 #[argh(subcommand, name = "timeline")]
 pub struct TimelineCmd {
     #[argh(option, short = 'p')]
@@ -90,6 +90,10 @@ pub struct TimelineCmd {
     #[argh(switch, short = 'd')]
     /// include tasks that are marked done
     pub done: bool,
+
+    #[argh(switch, short = 's')]
+    /// only show tasks with a start, end, due date or reminder
+    pub scheduled: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]

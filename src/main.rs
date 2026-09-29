@@ -149,12 +149,13 @@ async fn timeline(cmd: args::TimelineCmd, api: &VikunjaAPI) {
     let mut entries: Vec<ui::timeline::Entry> = tasks
         .iter()
         .filter_map(|t| ui::timeline::Entry::from_task(t, &projects))
+        .filter(|e| !cmd.scheduled || e.is_scheduled())
         .collect();
-    entries.sort_by_key(|e| (e.earliest(), e.id));
+    entries.sort_by_key(|e| (e.anchor(), e.id));
     let hidden = tasks.len() - entries.len();
 
     if entries.is_empty() {
-        println!("No tasks with dates to show.");
+        println!("No tasks to show.");
         return;
     }
 

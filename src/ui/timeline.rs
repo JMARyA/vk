@@ -1,8 +1,10 @@
 //! Full-screen timeline of tasks, laid out by their date fields.
 //!
-//! Each task with at least one date gets a row. `start_date`..`end_date` is
-//! drawn as a bar, `due_date` and `done_at` as markers on top of it, and a
-//! vertical rule marks the current time. Layout is kept in pure functions
+//! Each task gets a row, drawn in layers. A dim lifeline runs from `created`
+//! until the task was done (or now, while open), with `updated` marked on it.
+//! On top of that `start_date`..`end_date` is a bar, and `due_date`,
+//! reminders, projected repeats and `done_at` are markers. A vertical rule
+//! marks the current time. Layout is kept in pure functions
 //! (`Viewport`, `row_cells`, `axis_labels`) so it can be tested without a
 //! terminal; `run_timeline` only turns their output into widgets.
 
@@ -20,7 +22,7 @@ use ratatui::{
     Frame,
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-use vikunjars::models::{ModelsProject, ModelsTask};
+use vikunjars::models::{ModelsProject, ModelsTask, ModelsTaskRepeatMode};
 
 use crate::ui::parse_datetime;
 
@@ -38,6 +40,86 @@ pub struct Entry {
     pub end: Option<NaiveDateTime>,
     pub due: Option<NaiveDateTime>,
     pub done_at: Option<NaiveDateTime>,
+    pub created: Option<NaiveDateTime>,
+    pub updated: Option<NaiveDateTime>,
+    pub reminders: Vec<NaiveDateTime>,
+    pub repeat: Option<Repeat>,
+}
+
+/// How a recurring task moves its due date each time it is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Repeat {
+    /// A fixed interval. Also used for "from current date" mode, where the
+    /// real next date depends on when the task gets done: the interval from
+    /// the current due date is the best available guess.
+    Every(Duration),
+    /// Same day of the following month.
+    Monthly,
+}
+
+impl Repeat {
+    fn from_task(task: &ModelsTask) -> Option<Self> {
+        match task.repeat_mode {
+            Some(ModelsTaskRepeatMode::TaskRepeatModeMonth) => Some(Repeat::Monthly),
+            _ => task
+                .repeat_after
+                .filter(|s| *s > 0)
+                .map(|s| Repeat::Every(Duration::seconds(s as i64))),
+        }
+    }
+
+    fn label(self) -> String {
+        match self {
+            Repeat::Monthly => "monthly".into(),
+            Repeat::Every(d) if d.num_days() > 0 && d.num_seconds() % 86400 == 0 => {
+                format!("every {}d", d.num_days())
+            }
+            Repeat::Every(d) if d.num_hours() > 0 && d.num_seconds() % 3600 == 0 => {
+                format!("every {}h", d.num_hours())
+            }
+            Repeat::Every(d) => format!("every {}m", d.num_minutes().max(1)),
+        }
+    }
+}
+
+/// Future due dates of a repeating task that fall in `from..to`, capped so a
+/// tiny interval on a zoomed-out view cannot stall a frame.
+fn repeats_between(
+    due: NaiveDateTime,
+    repeat: Repeat,
+    from: NaiveDateTime,
+    to: NaiveDateTime,
+) -> Vec<NaiveDateTime> {
+    const MAX: usize = 500;
+    let mut out = Vec::new();
+
+    match repeat {
+        Repeat::Every(step) => {
+            let step_min = step.num_minutes().max(1);
+            // Skip straight to the first occurrence after both `due` and `from`.
+            let k = ((from - due).num_minutes().div_euclid(step_min) + 1).max(1);
+            let mut t = due + Duration::minutes(step_min * k);
+            while t < to && out.len() < MAX {
+                out.push(t);
+                t += Duration::minutes(step_min);
+            }
+        }
+        Repeat::Monthly => {
+            for k in 1..=MAX as u32 {
+                let Some(t) = due.checked_add_months(Months::new(k)) else {
+                    break;
+                };
+                if t >= to {
+                    break;
+                }
+                if t >= from {
+                    out.push(t);
+                }
+            }
+        }
+    }
+
+    out
 }
 
 fn to_local(s: Option<&str>) -> Option<NaiveDateTime> {
@@ -76,20 +158,60 @@ impl Entry {
             } else {
                 None
             },
+            created: to_local(task.created.as_deref()),
+            updated: to_local(task.updated.as_deref()),
+            reminders: task
+                .reminders
+                .iter()
+                .flatten()
+                .filter_map(|r| to_local(r.reminder.as_deref()))
+                .collect(),
+            repeat: Repeat::from_task(task),
         };
 
-        entry.dates().next().is_some().then_some(entry)
+        let has_date = entry.dates().next().is_some();
+        has_date.then_some(entry)
     }
 
-    fn dates(&self) -> impl Iterator<Item = NaiveDateTime> {
-        [self.start, self.end, self.due, self.done_at]
+    /// Dates the task was planned with, as opposed to its history.
+    fn planned(&self) -> impl Iterator<Item = NaiveDateTime> + '_ {
+        [self.start, self.end, self.due]
             .into_iter()
             .flatten()
+            .chain(self.reminders.iter().copied())
     }
 
-    /// The earliest date on the task; entries always have at least one.
-    pub fn earliest(&self) -> NaiveDateTime {
-        self.dates().min().unwrap_or_default()
+    fn dates(&self) -> impl Iterator<Item = NaiveDateTime> + '_ {
+        self.planned().chain(
+            [self.done_at, self.created, self.updated]
+                .into_iter()
+                .flatten(),
+        )
+    }
+
+    /// Whether the task has a start, end, due date or reminder.
+    pub fn is_scheduled(&self) -> bool {
+        self.planned().next().is_some()
+    }
+
+    /// Where the task sits in time: its first planned date, or when it was
+    /// created for tasks that were never scheduled. Rows are sorted by it.
+    pub fn anchor(&self) -> NaiveDateTime {
+        self.planned()
+            .min()
+            .or(self.created)
+            .or_else(|| self.dates().min())
+            .unwrap_or_default()
+    }
+
+    /// Span from creation until the task was done, or until `now` while open.
+    fn lifeline(&self, now: NaiveDateTime) -> Option<(NaiveDateTime, NaiveDateTime)> {
+        let end = if self.done {
+            self.done_at.or(self.updated)?
+        } else {
+            now
+        };
+        Some((self.created?, end))
     }
 
     fn is_overdue(&self, now: NaiveDateTime) -> bool {
@@ -272,6 +394,9 @@ pub fn axis_labels(vp: &Viewport, width: usize) -> Vec<(usize, String)> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cell {
     Empty,
+    /// Between creation and completion (or now).
+    Life,
+    Updated,
     Today,
     Bar,
     Start,
@@ -279,6 +404,9 @@ pub enum Cell {
     Due,
     Overdue,
     Done,
+    Reminder,
+    /// A projected future due date of a repeating task.
+    Repeat,
     /// Everything on the row lies left of the view.
     Before,
     /// Everything on the row lies right of the view.
@@ -289,12 +417,16 @@ impl Cell {
     fn symbol(self) -> char {
         match self {
             Cell::Empty => ' ',
+            Cell::Life => '·',
+            Cell::Updated => '•',
             Cell::Today => '┊',
             Cell::Bar => '━',
             Cell::Start => '▶',
             Cell::End => '■',
             Cell::Due | Cell::Overdue => '◆',
             Cell::Done => '✓',
+            Cell::Reminder => '◷',
+            Cell::Repeat => '◇',
             Cell::Before => '◂',
             Cell::After => '▸',
         }
@@ -308,17 +440,22 @@ impl Cell {
         };
         match self {
             Cell::Empty => Style::default(),
+            Cell::Life | Cell::Updated => Style::default().fg(Color::DarkGray),
             Cell::Today => Style::default().fg(Color::Red),
             Cell::Bar | Cell::Start | Cell::End => Style::default().fg(base),
             Cell::Due => Style::default().fg(Color::Yellow),
             Cell::Overdue => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             Cell::Done => Style::default().fg(Color::Green),
+            Cell::Reminder => Style::default().fg(Color::Magenta),
+            Cell::Repeat => Style::default().fg(Color::Yellow),
             Cell::Before | Cell::After => Style::default().fg(Color::DarkGray),
         }
     }
 }
 
-/// Lay out one task row across `width` columns.
+/// Lay out one task row across `width` columns. Later layers draw over
+/// earlier ones: lifeline, today, updated, bar, repeats, reminders, due, done.
+/// Today sits just above the lifeline so it never hides an actual marker.
 pub fn row_cells(entry: &Entry, vp: &Viewport, width: usize, now: NaiveDateTime) -> Vec<Cell> {
     let w = width as i64;
     let mut cells = vec![Cell::Empty; width];
@@ -328,19 +465,35 @@ pub fn row_cells(entry: &Entry, vp: &Viewport, width: usize, now: NaiveDateTime)
             cells[c as usize] = cell;
         }
     };
+    let fill = |cells: &mut [Cell], a: NaiveDateTime, b: NaiveDateTime, cell: Cell| {
+        let (from, to) = (vp.col(a.min(b)).max(0), vp.col(a.max(b)).min(w - 1));
+        for c in from..=to {
+            cells[c as usize] = cell;
+        }
+    };
 
+    if let Some((born, end)) = entry.lifeline(now) {
+        fill(&mut cells, born, end, Cell::Life);
+    }
     put(&mut cells, now, Cell::Today);
+    if let Some(updated) = entry.updated {
+        put(&mut cells, updated, Cell::Updated);
+    }
 
     match (entry.start, entry.end) {
-        (Some(a), Some(b)) => {
-            let (from, to) = (vp.col(a.min(b)).max(0), vp.col(a.max(b)).min(w - 1));
-            for c in from..=to {
-                cells[c as usize] = Cell::Bar;
-            }
-        }
+        (Some(a), Some(b)) => fill(&mut cells, a, b, Cell::Bar),
         (Some(a), None) => put(&mut cells, a, Cell::Start),
         (None, Some(b)) => put(&mut cells, b, Cell::End),
         (None, None) => {}
+    }
+
+    if let (Some(due), Some(repeat), false) = (entry.due, entry.repeat, entry.done) {
+        for t in repeats_between(due, repeat, vp.time_at(0), vp.time_at(w)) {
+            put(&mut cells, t, Cell::Repeat);
+        }
+    }
+    for &reminder in &entry.reminders {
+        put(&mut cells, reminder, Cell::Reminder);
     }
 
     if let Some(due) = entry.due {
@@ -405,7 +558,8 @@ fn fmt_date(t: NaiveDateTime, now: NaiveDateTime) -> String {
     t.format(&fmt).to_string()
 }
 
-fn details(entry: &Entry, now: NaiveDateTime) -> Vec<Span<'static>> {
+/// Two lines about the selected task: what is planned, then its history.
+fn details(entry: &Entry, now: NaiveDateTime) -> Vec<Line<'static>> {
     let dim = Style::default().fg(Color::DarkGray);
     let mut spans = vec![
         Span::styled(format!(" #{} ", entry.id), dim),
@@ -432,9 +586,63 @@ fn details(entry: &Entry, now: NaiveDateTime) -> Vec<Span<'static>> {
         Style::default().fg(Color::Yellow)
     };
     field("due", entry.due, due_style);
+    if let Some(repeat) = entry.repeat {
+        spans.push(Span::styled(
+            format!("  ◇ {}", repeat.label()),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+
+    let mut history = vec![Span::raw(" ")];
+    let mut field = |label: &str, t: Option<NaiveDateTime>, style: Style| {
+        if let Some(t) = t {
+            history.push(Span::styled(format!(" {label} "), dim));
+            history.push(Span::styled(fmt_date(t, now), style));
+        }
+    };
+    field("created", entry.created, Style::default());
+    field("updated", entry.updated, Style::default());
     field("done", entry.done_at, Style::default().fg(Color::Green));
 
-    spans
+    // The next reminder that has not fired yet, else the last one that did.
+    let upcoming = entry.reminders.iter().filter(|r| **r >= now).min();
+    let reminder = upcoming.or_else(|| entry.reminders.iter().max());
+    if let Some(&r) = reminder {
+        let label = if upcoming.is_some() {
+            "next reminder"
+        } else {
+            "last reminder"
+        };
+        field(label, Some(r), Style::default().fg(Color::Magenta));
+        if entry.reminders.len() > 1 {
+            history.push(Span::styled(
+                format!(" (of {})", entry.reminders.len()),
+                dim,
+            ));
+        }
+    }
+
+    vec![Line::from(spans), Line::from(history)]
+}
+
+fn legend() -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    for (sym, color, label) in [
+        ("·", Color::DarkGray, "open since created"),
+        ("•", Color::DarkGray, "updated"),
+        ("━", Color::Blue, "start–end"),
+        ("◆", Color::Yellow, "due"),
+        ("◇", Color::Yellow, "repeats"),
+        ("◷", Color::Magenta, "reminder"),
+        ("✓", Color::Green, "done"),
+    ] {
+        spans.push(Span::styled(sym, Style::default().fg(color)));
+        spans.push(Span::styled(
+            format!(" {label}   "),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    Line::from(spans)
 }
 
 struct State {
@@ -455,8 +663,8 @@ fn draw(
         Constraint::Length(1),
         Constraint::Length(2),
         Constraint::Min(1),
-        Constraint::Length(1),
-        Constraint::Length(1),
+        Constraint::Length(2),
+        Constraint::Length(2),
     ])
     .areas(f.area());
 
@@ -481,7 +689,7 @@ fn draw(
         entries.len()
     );
     if hidden > 0 {
-        title.push_str(&format!(" ({hidden} without dates hidden)"));
+        title.push_str(&format!(" ({hidden} unscheduled hidden)"));
     }
     f.render_widget(
         Paragraph::new(title).style(Style::default().add_modifier(Modifier::BOLD)),
@@ -554,13 +762,16 @@ fn draw(
     f.render_widget(Paragraph::new(lines), body);
 
     if let Some(e) = entries.get(st.selected) {
-        f.render_widget(Paragraph::new(Line::from(details(e, now))), info);
+        f.render_widget(Paragraph::new(details(e, now)), info);
     }
     f.render_widget(
-        Paragraph::new(
-            " j/k select · h/l scroll · H/L page · +/- zoom · t today · c center · ⏎ info · q quit",
-        )
-        .style(dim),
+        Paragraph::new(vec![
+            legend(),
+            Line::styled(
+                " j/k select · h/l scroll · H/L page · +/- zoom · t today · c center · ⏎ info · q quit",
+                dim,
+            ),
+        ]),
         help,
     );
 
@@ -568,17 +779,19 @@ fn draw(
 }
 
 /// Show the timeline until the user quits. Returns the id of the task picked
-/// with enter, if any. `hidden` is the number of tasks left out for having no
-/// dates, shown in the header.
+/// with enter, if any. `hidden` is the number of unscheduled tasks left out,
+/// shown in the header.
 pub fn run_timeline(entries: &[Entry], hidden: usize) -> io::Result<Option<i32>> {
     let mut terminal = ratatui::try_init()?;
     let now = Local::now().naive_local();
 
     let mut st = State {
+        // Rows are sorted by anchor, so this lands on the first task ahead of
+        // today, or the most recent one when nothing lies ahead.
         selected: entries
             .iter()
-            .position(|e| e.dates().any(|t| t >= now))
-            .unwrap_or(0),
+            .position(|e| e.anchor() >= now)
+            .unwrap_or(entries.len().saturating_sub(1)),
         scroll: 0,
         vp: Viewport::anchored(now, Scale::Day, 0),
     };
@@ -631,7 +844,7 @@ pub fn run_timeline(entries: &[Entry], hidden: usize) -> io::Result<Option<i32>>
             KeyCode::Char('t') => st.vp = Viewport::anchored(now, st.vp.scale, timeline_width / 4),
             KeyCode::Char('c') => {
                 if let Some(e) = entries.get(st.selected) {
-                    st.vp = Viewport::anchored(e.earliest(), st.vp.scale, timeline_width / 4);
+                    st.vp = Viewport::anchored(e.anchor(), st.vp.scale, timeline_width / 4);
                 }
             }
             _ => {}
@@ -664,6 +877,10 @@ mod tests {
             end: None,
             due: None,
             done_at: None,
+            created: None,
+            updated: None,
+            reminders: Vec::new(),
+            repeat: None,
         }
     }
 
@@ -843,9 +1060,181 @@ mod tests {
         task.due_date = Some("0001-01-01T00:00:00Z".into());
         assert!(Entry::from_task(&task, &[]).is_none());
 
-        task.due_date = Some("2026-10-01T10:00:00Z".into());
+        // Creation alone places a task, but does not make it scheduled.
+        task.created = Some("2026-08-01T10:00:00Z".into());
         let e = Entry::from_task(&task, &[]).unwrap();
-        assert!(e.due.is_some() && e.done_at.is_none());
+        assert!(e.done_at.is_none() && !e.is_scheduled());
+
+        task.due_date = Some("2026-10-01T10:00:00Z".into());
+        assert!(Entry::from_task(&task, &[]).unwrap().is_scheduled());
+    }
+
+    #[test]
+    fn test_entry_reads_reminders_and_repeat() {
+        let task = ModelsTask {
+            due_date: Some("2026-10-01T10:00:00Z".into()),
+            reminders: Some(vec![
+                vikunjars::models::ModelsTaskReminder {
+                    reminder: Some("2026-09-30T10:00:00Z".into()),
+                    ..Default::default()
+                },
+                vikunjars::models::ModelsTaskReminder::default(),
+            ]),
+            repeat_after: Some(7 * 86400),
+            ..Default::default()
+        };
+        let e = Entry::from_task(&task, &[]).unwrap();
+        assert_eq!(e.reminders.len(), 1);
+        assert_eq!(e.repeat, Some(Repeat::Every(Duration::days(7))));
+
+        // Monthly mode ignores repeat_after.
+        let monthly = ModelsTask {
+            repeat_mode: Some(ModelsTaskRepeatMode::TaskRepeatModeMonth),
+            ..task
+        };
+        assert_eq!(Repeat::from_task(&monthly), Some(Repeat::Monthly));
+        assert_eq!(Repeat::from_task(&ModelsTask::default()), None);
+    }
+
+    #[test]
+    fn test_repeat_labels() {
+        assert_eq!(Repeat::Every(Duration::days(7)).label(), "every 7d");
+        assert_eq!(Repeat::Every(Duration::hours(36)).label(), "every 36h");
+        assert_eq!(Repeat::Every(Duration::minutes(90)).label(), "every 90m");
+        assert_eq!(Repeat::Monthly.label(), "monthly");
+    }
+
+    #[test]
+    fn test_anchor_prefers_planned_dates_over_creation() {
+        let mut e = entry();
+        e.created = Some(at(2026, 1, 1, 0));
+        assert_eq!(e.anchor(), at(2026, 1, 1, 0));
+        e.reminders = vec![at(2026, 10, 5, 0)];
+        e.due = Some(at(2026, 10, 9, 0));
+        assert_eq!(e.anchor(), at(2026, 10, 5, 0));
+    }
+
+    #[test]
+    fn test_repeats_every_interval_within_view() {
+        let due = at(2026, 9, 1, 0);
+        let got = repeats_between(
+            due,
+            Repeat::Every(Duration::days(7)),
+            at(2026, 9, 20, 0),
+            at(2026, 10, 10, 0),
+        );
+        assert_eq!(
+            got,
+            vec![at(2026, 9, 22, 0), at(2026, 9, 29, 0), at(2026, 10, 6, 0)]
+        );
+
+        // A view before the due date never shows the due date itself.
+        let got = repeats_between(
+            due,
+            Repeat::Every(Duration::days(7)),
+            at(2026, 8, 1, 0),
+            at(2026, 9, 10, 0),
+        );
+        assert_eq!(got, vec![at(2026, 9, 8, 0)]);
+    }
+
+    #[test]
+    fn test_repeats_monthly_and_capped() {
+        let got = repeats_between(
+            at(2026, 1, 31, 0),
+            Repeat::Monthly,
+            at(2026, 1, 1, 0),
+            at(2026, 4, 1, 0),
+        );
+        // chrono clamps to the last day of shorter months.
+        assert_eq!(got, vec![at(2026, 2, 28, 0), at(2026, 3, 31, 0)]);
+
+        let got = repeats_between(
+            at(2026, 1, 1, 0),
+            Repeat::Every(Duration::minutes(1)),
+            at(2026, 1, 1, 0),
+            at(2030, 1, 1, 0),
+        );
+        assert_eq!(got.len(), 500);
+    }
+
+    #[test]
+    fn test_row_draws_lifeline_under_everything() {
+        let now = at(2026, 10, 2, 12);
+        let mut e = entry();
+        e.created = Some(at(2026, 9, 26, 0)); // before the view
+        e.updated = Some(at(2026, 9, 29, 8));
+        e.reminders = vec![at(2026, 9, 30, 9)];
+        e.due = Some(at(2026, 10, 1, 0));
+        let cells = row_cells(&e, &day_view(), 7, now);
+        assert_eq!(
+            cells,
+            vec![
+                Cell::Life,
+                Cell::Updated,
+                Cell::Reminder,
+                Cell::Overdue,
+                Cell::Today,
+                Cell::Empty,
+                Cell::Empty
+            ]
+        );
+    }
+
+    #[test]
+    fn test_row_today_never_hides_a_marker() {
+        // Month scale: created, updated and now share one column.
+        let vp = Viewport::anchored(at(2026, 9, 1, 0), Scale::Month, 0);
+        let mut e = entry();
+        e.created = Some(at(2026, 9, 27, 20));
+        e.updated = Some(at(2026, 9, 27, 20));
+        let cells = row_cells(&e, &vp, 3, at(2026, 9, 29, 12));
+        assert_eq!(cells[0], Cell::Updated);
+    }
+
+    #[test]
+    fn test_row_lifeline_stops_at_completion() {
+        let mut e = entry();
+        e.done = true;
+        e.created = Some(at(2026, 9, 28, 0));
+        e.done_at = Some(at(2026, 9, 30, 0));
+        let cells = row_cells(&e, &day_view(), 5, at(2026, 10, 2, 0));
+        assert_eq!(
+            cells[..4],
+            [Cell::Life, Cell::Life, Cell::Done, Cell::Empty]
+        );
+
+        // Done without done_at falls back to the last update, else no line.
+        e.done_at = None;
+        assert_eq!(e.lifeline(at(2027, 1, 1, 0)), None);
+        e.updated = Some(at(2026, 9, 29, 0));
+        assert_eq!(
+            e.lifeline(at(2027, 1, 1, 0)),
+            Some((at(2026, 9, 28, 0), at(2026, 9, 29, 0)))
+        );
+    }
+
+    #[test]
+    fn test_row_projects_repeats_only_while_open() {
+        let mut e = entry();
+        e.due = Some(at(2026, 9, 28, 0));
+        e.repeat = Some(Repeat::Every(Duration::days(2)));
+        let now = at(2020, 1, 1, 0);
+        let cells = row_cells(&e, &day_view(), 6, now);
+        assert_eq!(
+            cells,
+            vec![
+                Cell::Due,
+                Cell::Empty,
+                Cell::Repeat,
+                Cell::Empty,
+                Cell::Repeat,
+                Cell::Empty
+            ]
+        );
+
+        e.done = true;
+        assert!(!row_cells(&e, &day_view(), 6, now).contains(&Cell::Repeat));
     }
 
     #[test]
